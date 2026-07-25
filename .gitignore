@@ -1,0 +1,42 @@
+# ==========================
+# OS
+# ==========================
+.DS_Store
+Thumbs.db
+
+# ==========================
+# Editors
+# ==========================
+.vscode/
+.idea/
+
+# ==========================
+# MATLAB
+# ==========================
+slprj/
+work/
+*.autosave
+*.asv
+
+# Simulation cache
+cache/
+
+# ==========================
+# STM32CubeIDE
+# ==========================
+Debug/
+Release/
+
+# Build files
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
