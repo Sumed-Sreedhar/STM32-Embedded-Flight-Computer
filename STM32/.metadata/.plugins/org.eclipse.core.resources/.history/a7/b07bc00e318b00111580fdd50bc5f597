@@ -1,0 +1,16 @@
+/*
+ * led.h
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+
+#ifndef INC_LED_H_
+#define INC_LED_H_
+
+typedef enum{
+	PAUSE=0,
+	BLINKING
+}blink_state_t;
+
+#endif /* INC_LED_H_ */

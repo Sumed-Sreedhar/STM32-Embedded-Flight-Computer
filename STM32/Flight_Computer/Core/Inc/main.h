@@ -79,8 +79,10 @@ void Error_Handler(void);
 #define SWO_GPIO_Port GPIOB
 #define FAULT_BT_Pin GPIO_PIN_4
 #define FAULT_BT_GPIO_Port GPIOB
+#define FAULT_BT_EXTI_IRQn EXTI4_IRQn
 #define STATE_BT_Pin GPIO_PIN_5
 #define STATE_BT_GPIO_Port GPIOB
+#define STATE_BT_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 

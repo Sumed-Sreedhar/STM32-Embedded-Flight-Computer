@@ -1,0 +1,29 @@
+/*
+ * system_state.c
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+#include "main.h"
+#include "system_state.h"
+
+volatile system_state_t current_system_state = BOOTING;
+
+void handle_system_state(void) {
+	switch(current_system_state)
+	{
+	case BOOTING:
+		// Handle booting state
+		break;
+	case SELF_TEST:
+		// Handle self-test state
+		break;
+	case ACTIVE:
+		// Handle active state
+		break;
+	default:
+		// Handle unknown state
+		break;
+	}
+}
+

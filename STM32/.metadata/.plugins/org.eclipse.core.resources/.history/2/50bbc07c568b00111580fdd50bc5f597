@@ -1,0 +1,35 @@
+/*
+ * system_health.c
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+
+#include "system_health.h"
+#include "button.h"
+#include "led.h"
+
+volatile health_state_t current_health_state = NORMAL;
+
+void handle_system_health(void) {
+	switch(current_health_state)
+	{
+	case NORMAL:
+		led_normal_on();
+		led_fault_off();
+		break;
+	case FAULT:
+		led_normal_off();
+		led_fault_on();
+		break;
+	case CRITICAL_FAULT:
+		led_normal_off();
+		led_fault_blink();
+		led_fault_reset();
+		break;
+	default:
+		// Handle unknown state
+		break;
+	}
+}
+

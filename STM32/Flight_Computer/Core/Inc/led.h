@@ -1,0 +1,24 @@
+/*
+ * led.h
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+
+#ifndef INC_LED_H_
+#define INC_LED_H_
+
+void led_status_blink_slow(void);
+void led_status_blink_fast(void);
+void led_status_on(void);
+void led_status_off(void);
+void led_fault_blink(void);
+void led_fault_on(void);
+void led_fault_off(void);
+void led_normal_on(void);
+void led_normal_off(void);
+
+void led_status_reset(void);
+void led_fault_reset(void);
+
+#endif /* INC_LED_H_ */

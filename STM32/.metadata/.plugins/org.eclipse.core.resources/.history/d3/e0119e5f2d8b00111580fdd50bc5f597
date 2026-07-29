@@ -1,0 +1,19 @@
+/*
+ * system_health.h
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+
+#ifndef INC_SYSTEM_HEALTH_H_
+#define INC_SYSTEM_HEALTH_H_
+
+typedef enum{
+	NORMAL=0,
+	FAULT,
+	CRITICAL_FAULT
+}health_state_t;
+
+
+
+#endif /* INC_SYSTEM_HEALTH_H_ */
