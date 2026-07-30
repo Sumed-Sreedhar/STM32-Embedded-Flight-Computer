@@ -1,0 +1,88 @@
+/*
+ * BMP280.c
+ *
+ *  Created on: 30-Jul-2026
+ *      Author: sumed
+ */
+#include "main.h"
+#include "BMP280.h"
+#include "string.h"
+#include "stdio.h"
+
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
+
+#define BMP280_ADDRESS (0x76 << 1)
+
+uint32_t adc_T, adc_P;
+
+
+uint8_t BMP280_FindAddress(void)
+{
+	if(HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100) == HAL_OK)
+	{
+		return 0x76;
+	}
+	return 0x00;
+}
+
+HAL_StatusTypeDef BMP280_Init(void)
+{
+	uint8_t ctrl_meas =
+	    (0b010 << 5) |
+	    (0b011 << 2) |
+	    (0b11);
+
+	uint8_t config =
+	    (0b000 << 5) |
+	    (0b010 << 2);
+
+	HAL_StatusTypeDef status;
+
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF5, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
+	if(status != HAL_OK)
+	{
+		return status;
+	}
+
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100);
+	if(status != HAL_OK)
+	{
+		return status;
+	}
+	return HAL_OK;
+}
+
+int32_t BMP280_ReadRaw_Temp(void)
+{
+	uint8_t temp_data[3];
+	HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0xFA, I2C_MEMADD_SIZE_8BIT, temp_data, 3, 100);
+	int32_t adc_T = (temp_data[0] << 12) | (temp_data[1] << 4) | (temp_data[2] >> 4);
+	return adc_T;
+}
+
+int32_t BMP280_ReadRaw_Pressure(void)
+{
+	uint8_t press_data[3];
+	HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0xF7, I2C_MEMADD_SIZE_8BIT, press_data, 3, 100);
+	int32_t adc_P = (press_data[0] << 12) | (press_data[1] << 4) | (press_data[2] >> 4);
+	return adc_P;
+}
+
+
+void BMP280_ReadRaw(void)
+{
+	uint8_t data[6];
+
+	HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0xF7, I2C_MEMADD_SIZE_8BIT, data, 3, 100);
+	int32_t adc_P = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4);
+	int32_t adc_T = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4);
+}
+
+
+
+
+
+
+
+

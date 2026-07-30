@@ -1,0 +1,49 @@
+/*
+ * BMP280.c
+ *
+ *  Created on: 30-Jul-2026
+ *      Author: sumed
+ */
+#include "main.h"
+#include "BMP280.h"
+#include "string.h"
+#include "stdio.h"
+
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
+
+#define BMP280_ADDRESS (0x76 << 1)
+#define I2C_MEMADD_SIZE_8BIT 1
+
+uint8_t BMP280_FindAddress(void)
+{
+	if(HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100) == HAL_OK)
+	{
+		return 0x76;
+	}
+	return 0x00;
+}
+
+void BMP280_Init(void)
+{
+	uint8_t ctrl_meas = 0b01001111;
+	HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, I2C_MEMADD_SIZE_8BIT, 100);
+
+	uint8_t config = 0b00001000;
+	HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF5, I2C_MEMADD_SIZE_8BIT, &config, I2C_MEMADD_SIZE_8BIT, 100);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

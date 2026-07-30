@@ -1,0 +1,55 @@
+/*
+ * button.c
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+
+#include "button.h"
+#include "led.h"
+#include "system_health.h"
+#include "system_state.h"
+
+void GPIO_State_Button_Callback()
+{
+	switch(current_system_state)
+	{
+	case BOOTING:
+		current_system_state = SELF_TEST;
+		led_status_reset();
+		break;
+	case SELF_TEST:
+		current_system_state = ACTIVE;
+		led_status_reset();
+		break;
+	case ACTIVE:
+		current_system_state = BOOTING;
+		led_status_reset();
+		break;
+	default:
+		current_health_state = CRITICAL_FAULT;
+		break;
+	}
+}
+
+void GPIO_Fault_Button_Callback()
+{
+	switch(current_health_state)
+	{
+	case NORMAL:
+		current_health_state = FAULT;
+		led_fault_reset();
+		break;
+	case FAULT:
+		current_health_state = CRITICAL_FAULT;
+		led_fault_reset();
+		break;
+	case CRITICAL_FAULT:
+		current_health_state = NORMAL;
+		led_fault_reset();
+		break;
+	default:
+		current_health_state = CRITICAL_FAULT;
+		break;
+	}
+}

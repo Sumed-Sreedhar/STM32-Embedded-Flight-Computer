@@ -15,6 +15,7 @@ typedef enum {
 }system_state_t;
 
 void handle_system_state(void);
+void BMP280_SelfTest(void);
 extern volatile system_state_t current_system_state;
 
 #endif /* INC_SYSTEM_STATE_H_ */

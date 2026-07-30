@@ -1,0 +1,31 @@
+/*
+ * system_state.c
+ *
+ *  Created on: 29-Jul-2026
+ *      Author: sumed
+ */
+#include "main.h"
+#include "led.h"
+#include "system_state.h"
+#include "system_health.h"
+
+volatile system_state_t current_system_state = BOOTING;
+
+void handle_system_state(void) {
+	switch(current_system_state)
+	{
+	case BOOTING:
+		led_status_blink_slow();
+		break;
+	case SELF_TEST:
+		led_status_blink_fast();
+		break;
+	case ACTIVE:
+		led_status_on();
+		break;
+	default:
+		current_health_state = CRITICAL_FAULT;
+		break;
+	}
+}
+

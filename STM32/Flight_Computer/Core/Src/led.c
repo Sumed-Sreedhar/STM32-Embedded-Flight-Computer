@@ -23,7 +23,7 @@ void led_status_blink_slow(void)
 {
 	uint32_t status_last_blink;
 	status_last_blink = HAL_GetTick() - last_status_blink_time;
-	if(status_last_blink >= 1000)
+	if(status_last_blink >= 500)
 	{
 		HAL_GPIO_TogglePin(STATUS_LED_GPIO_Port,STATUS_LED_Pin);
 		last_status_blink_time = HAL_GetTick();
@@ -51,7 +51,7 @@ void led_fault_blink(void)
 {
 	uint32_t fault_last_blink;
 	fault_last_blink = HAL_GetTick() - last_fault_blink_time;
-	if(fault_last_blink >= 500)
+	if(fault_last_blink >= 100)
 	{
 		HAL_GPIO_TogglePin(FAULT_LED_GPIO_Port,FAULT_LED_Pin);
 		last_fault_blink_time = HAL_GetTick();
