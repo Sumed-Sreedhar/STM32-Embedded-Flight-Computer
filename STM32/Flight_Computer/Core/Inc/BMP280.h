@@ -13,7 +13,7 @@
 uint8_t BMP280_FindAddress(void);
 HAL_StatusTypeDef BMP280_Init(void);
 HAL_StatusTypeDef BMP280_ReadRaw(int32_t *adc_T, int32_t *adc_P);
-void BMP280_LoadCalibration(void);
+HAL_StatusTypeDef BMP280_LoadCalibration(void);
 int32_t BMP280_CompensateTemp(int32_t adc_T);
 uint32_t BMP280_CompensatePressure(int32_t adc_P);
 

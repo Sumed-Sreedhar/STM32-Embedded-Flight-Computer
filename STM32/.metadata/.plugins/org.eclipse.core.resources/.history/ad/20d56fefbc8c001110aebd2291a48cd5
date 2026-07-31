@@ -1,0 +1,93 @@
+/*
+ * self_test.c
+ *
+ *  Created on: 31-Jul-2026
+ *      Author: sumed
+ */
+
+#include "self_test.h"
+#include "system_health.h"
+#include "BMP280.h"
+#include "sensor_data.h"
+#include "string.h"
+#include "stdio.h"
+#include "main.h"
+
+extern volatile health_state_t current_health_state;
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
+
+#define BMP280_ADDRESS (0x76 << 1)
+
+void BMP280_SelfTest(void)
+{
+	if (BMP280_FindAddress() != 0x76)
+	{
+	    current_health_state = CRITICAL_FAULT;
+	    return;
+	}
+
+	if (BMP280_Init() != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	uint8_t chip_id;
+	uint8_t ctrl_meas;
+	uint8_t config;
+	char msg[150];
+
+	HAL_I2C_Mem_Read(&hi2c1,
+	                 BMP280_ADDRESS,
+	                 0xD0,
+	                 I2C_MEMADD_SIZE_8BIT,
+	                 &chip_id,
+	                 1,
+	                 100);
+
+	HAL_I2C_Mem_Read(&hi2c1,
+	                 BMP280_ADDRESS,
+	                 0xF4,
+	                 I2C_MEMADD_SIZE_8BIT,
+	                 &ctrl_meas,
+	                 1,
+	                 100);
+
+	HAL_I2C_Mem_Read(&hi2c1,
+	                 BMP280_ADDRESS,
+	                 0xF5,
+	                 I2C_MEMADD_SIZE_8BIT,
+	                 &config,
+	                 1,
+	                 100);
+
+	sprintf(msg,
+	        "\r\nChip ID   : 0x%02X"
+	        "\r\nCTRL_MEAS : 0x%02X"
+	        "\r\nCONFIG    : 0x%02X\r\n",
+	        chip_id,
+	        ctrl_meas,
+	        config);
+
+	HAL_UART_Transmit(&huart2,
+	                  (uint8_t *)msg,
+	                  strlen(msg),
+	                  HAL_MAX_DELAY);
+
+	if(BMP280_LoadCalibration() != HAL_OK)
+		{
+		    current_health_state = FAULT;
+		    return;
+		}
+
+
+	if (BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw) != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	current_health_state = NORMAL;
+}
+

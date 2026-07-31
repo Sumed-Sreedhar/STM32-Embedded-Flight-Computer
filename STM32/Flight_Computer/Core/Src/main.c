@@ -26,6 +26,7 @@
 #include "system_state.h"
 #include "button.h"
 #include "BMP280.h"
+#include "sensor_data.h"
 #include "string.h"
 #include "stdio.h"
 
@@ -103,6 +104,9 @@ int main(void)
   HAL_Delay(5000); // Wait for 1 second before starting the self-test
   current_system_state = SELF_TEST;
   BMP280_SelfTest();
+  int32_t temp_c;
+  uint32_t pressure_pa;
+  static char msg[260];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -114,6 +118,39 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  handle_system_state();
 	  handle_system_health();
+
+	  uint8_t raw_buf[6];
+	  char mesg[80];
+
+	  HAL_I2C_Mem_Read(&hi2c1, (0x76 << 1), 0xF7, I2C_MEMADD_SIZE_8BIT, raw_buf, 6, 100);
+
+	  snprintf(mesg, sizeof(mesg), "P_RAW: %02X %02X %02X | T_RAW: %02X %02X %02X\r\n",
+	           raw_buf[0], raw_buf[1], raw_buf[2],   // Pressure bytes (0xF7, 0xF8, 0xF9)
+	           raw_buf[3], raw_buf[4], raw_buf[5]);  // Temperature bytes (0xFA, 0xFB, 0xFC)
+
+	  HAL_UART_Transmit(&huart2, (uint8_t*)mesg, strlen(mesg), 100);
+	  HAL_Delay(1000);
+
+	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
+	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
+	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
+	  sprintf(msg,
+			  "\r\n"
+			  "\r\nRaw Temperature : %lu"
+			  "\r\nRaw Pressure    : %lu"
+			  "\r\n"
+			  "\r\nTemperature     : %ld.%02ld C"
+			  "\r\nPressure        : %lu.%02lu hPa",
+			  sensor_data.temperature_raw,
+			  sensor_data.pressure_raw,
+			  temp_c / 100,
+			  temp_c % 100,
+			  pressure_pa / 100,
+			  pressure_pa % 100
+			  );
+
+	      HAL_UART_Transmit_IT(&huart2, (uint8_t*)msg, strlen(msg));
+	      HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }

@@ -8,8 +8,6 @@
 #include "led.h"
 #include "system_state.h"
 #include "system_health.h"
-#include "BMP280.h"
-#include "sensor_data.h"
 
 volatile system_state_t current_system_state = BOOTING;
 
@@ -31,25 +29,3 @@ void handle_system_state(void) {
 	}
 }
 
-void BMP280_SelfTest(void)
-{
-	if (BMP280_FindAddress() != 0x76)
-	{
-	    current_health_state = CRITICAL_FAULT;
-	    return;
-	}
-
-	if (BMP280_Init() != HAL_OK)
-	{
-	    current_health_state = FAULT;
-	    return;
-	}
-
-	if (BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw) != HAL_OK)
-	{
-	    current_health_state = FAULT;
-	    return;
-	}
-
-	current_health_state = NORMAL;
-}

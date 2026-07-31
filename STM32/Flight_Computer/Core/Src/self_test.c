@@ -1,0 +1,43 @@
+/*
+ * self_test.c
+ *
+ *  Created on: 31-Jul-2026
+ *      Author: sumed
+ */
+
+#include "self_test.h"
+#include "system_health.h"
+#include "BMP280.h"
+#include "sensor_data.h"
+#include "main.h"
+
+void BMP280_SelfTest(void)
+{
+	if (BMP280_FindAddress() != 0x76)
+	{
+	    current_health_state = CRITICAL_FAULT;
+	    return;
+	}
+
+	if (BMP280_Init() != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	if(BMP280_LoadCalibration() != HAL_OK)
+		{
+		    current_health_state = FAULT;
+		    return;
+		}
+
+
+	if (BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw) != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	current_health_state = NORMAL;
+}
+
