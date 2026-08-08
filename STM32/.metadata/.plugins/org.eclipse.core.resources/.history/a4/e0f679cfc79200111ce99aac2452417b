@@ -1,0 +1,20 @@
+/*
+ * MPU9250.h
+ *
+ *  Created on: 01-Aug-2026
+ *      Author: sumed
+ */
+
+#ifndef INC_MPU9250_H_
+#define INC_MPU9250_H_
+
+#include "main.h"
+#include "stdint.h"
+
+uint8_t MPU9250_FindAddress(void);
+HAL_StatusTypeDef MPU9250_Who_AM_I(void);
+HAL_StatusTypeDef MPU9250_Init(void);
+HAL_StatusTypeDef MPU9250_ReadRaw(int16_t *accel_raw_x,int16_t *accel_raw_y,int16_t *accel_raw_z, int16_t *gyro_raw_x,int16_t *gyro_raw_y, int16_t *gyro_raw_z, int16_t *temp_raw);
+HAL_StatusTypeDef MPU9250_LoadCalibration(void);
+
+#endif /* INC_MPU9250_H_ */

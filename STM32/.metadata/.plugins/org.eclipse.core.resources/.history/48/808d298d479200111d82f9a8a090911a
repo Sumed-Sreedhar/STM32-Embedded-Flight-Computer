@@ -1,0 +1,39 @@
+/*
+ * MPU9250.c
+ *
+ *  Created on: 01-Aug-2026
+ *      Author: sumed
+ */
+
+
+#include "MPU9250.h"
+
+extern I2C_HandleTypeDef hi2c1;
+
+#define MPU9250_ADDRESS (0x68 << 1)
+
+uint8_t MPU9250_FindAddress(void){
+	if (HAL_I2C_IsDeviceReady(&hi2c1, MPU9250_ADDRESS, 3, 100) == HAL_OK)	{		return 0x68;	}	return 0x00;}
+
+HAL_StatusTypeDef MPU9250_Who_AM_I(void)
+{
+	uint8_t who_am_i;
+	HAL_StatusTypeDef status;
+
+	status = HAL_I2C_Mem_Read(&hi2c1, MPU9250_ADDRESS, 0x75, I2C_MEMADD_SIZE_8BIT, &who_am_i, 1, 100);
+	if (status != HAL_OK)
+	{
+		return status;
+	}
+
+	if (who_am_i != 0x71)
+	{
+		return HAL_ERROR;
+	}
+
+	return HAL_OK;
+}
+
+HAL_StatusTypeDef MPU9250_Init(void){
+	return HAL_OK;}
+

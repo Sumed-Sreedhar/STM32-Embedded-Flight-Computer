@@ -1,0 +1,18 @@
+/*
+ * MPU9250.h
+ *
+ *  Created on: 01-Aug-2026
+ *      Author: sumed
+ */
+
+#ifndef INC_MPU9250_H_
+#define INC_MPU9250_H_
+
+
+
+uint8_t BMP280_FindAddress(void);
+HAL_StatusTypeDef BMP280_Init(void);
+HAL_StatusTypeDef BMP280_ReadRaw(int32_t *adc_T, int32_t *adc_P);
+HAL_StatusTypeDef BMP280_LoadCalibration(void);
+
+#endif /* INC_MPU9250_H_ */

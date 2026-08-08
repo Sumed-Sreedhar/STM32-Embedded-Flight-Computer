@@ -6,13 +6,14 @@
  */
 #include "main.h"
 #include "BMP280.h"
-#include "string.h"
-#include "stdio.h"
 
 extern I2C_HandleTypeDef hi2c1;
 extern UART_HandleTypeDef huart2;
 
 #define BMP280_ADDRESS (0x76 << 1)
+#define BMP280_TIMEOUT 100
+#define CTRL_MEAS 0xF4
+#define CONFIG 0xF5
 
 static uint16_t dig_T1, dig_P1;
 static int16_t dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
@@ -20,11 +21,11 @@ static int32_t t_fine;
 
 uint8_t BMP280_FindAddress(void)
 {
-	if(HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100) == HAL_OK)
+	if (HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100) == HAL_OK)
 	{
-		return 0x76;
+		return BMP280_ADDRESS;
 	}
-	return 0x00;
+    return 0x00;
 }
 
 HAL_StatusTypeDef BMP280_Init(void)
@@ -40,13 +41,13 @@ HAL_StatusTypeDef BMP280_Init(void)
 
 	HAL_StatusTypeDef status;
 
-	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF5, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, CONFIG, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
 	if(status != HAL_OK)
 	{
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100);
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, CTRL_MEAS, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100);
 	if(status != HAL_OK)
 	{
 		return status;

@@ -21,11 +21,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "led.h"
 #include "system_health.h"
 #include "system_state.h"
+#include "self_test.h"
 #include "button.h"
+#include "led.h"
 #include "BMP280.h"
+#include "MPU9250.h"
 #include "sensor_data.h"
 #include "string.h"
 #include "stdio.h"
@@ -101,12 +103,22 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(5000); // Wait for 1 second before starting the self-test
   current_system_state = SELF_TEST;
-  BMP280_SelfTest();
+
+  //BMP280_SelfTest();
+  MPU9250_SelfTest();
+
+  // BM280 Variables
   int32_t temp_c;
   uint32_t pressure_pa;
-  static char msg[260];
+
+  // MPU9250 Variables
+  float accel_x, accel_y, accel_z;
+  float gyro_x, gyro_y, gyro_z;
+  float temp_raw;
+
+  uint32_t last_transmit_time = 0;
+  char mpu_data[300];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,26 +131,44 @@ int main(void)
 	  handle_system_state();
 	  handle_system_health();
 
+	  /* Read temperature and pressure data from BMP280 sensor */
 	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
 	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
 	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
-	  sprintf(msg,
-			  "\r\n"
-			  "\r\nRaw Temperature : %lu"
-			  "\r\nRaw Pressure    : %lu"
-			  "\r\n"
-			  "\r\nTemperature     : %ld.%02ld C"
-			  "\r\nPressure        : %lu.%02lu hPa",
-			  sensor_data.temperature_raw,
-			  sensor_data.pressure_raw,
-			  temp_c / 100,
-			  temp_c % 100,
-			  pressure_pa / 100,
-			  pressure_pa % 100
-			  );
 
-	      HAL_UART_Transmit_IT(&huart2, (uint8_t*)msg, strlen(msg));
-	      HAL_Delay(1000);
+	  /* Read IMU data from MPU9250 sensor */
+	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
+			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw);
+
+	  accel_x = sensor_data.accel_raw_x/16384;
+	  accel_y = sensor_data.accel_raw_y/16384;
+	  accel_z = sensor_data.accel_raw_z/16384;
+	  gyro_x = sensor_data.gyro_raw_x/131;
+	  gyro_y = sensor_data.gyro_raw_y/131;
+	  gyro_z = sensor_data.gyro_raw_z/131;
+	  temp_raw = (sensor_data.temp_raw/333.87) + 21; // Convert raw temperature to degrees Celsius
+
+	  sprintf(mpu_data, "\r\n Accel_raw X: %d, Accel_raw Y: %d, Accel_raw Z: %d,"
+			  "\r\n Gyro_raw X: %d, Gyro_raw Y: %d, Gyro_raw Z: %d,"
+			  " \r\n Temp_raw: %d,"
+			  "\r\n Accel X: %.2f, Accel Y: %.2f, Accel Z: %.2f,"
+			  " \r\n Gyro X: %.2f, Gyro Y: %.2f, Gyro Z: %.2f,"
+			  " \r\n Temp: %.2f C\r\n",
+			  sensor_data.accel_raw_x, sensor_data.accel_raw_y, sensor_data.accel_raw_z,
+			  sensor_data.gyro_raw_x, sensor_data.gyro_raw_y, sensor_data.gyro_raw_z,
+			  sensor_data.temp_raw,
+			  accel_x, accel_y, accel_z,
+			  gyro_x, gyro_y, gyro_z,
+			  temp_raw);
+
+	  //if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
+	  {
+		  //HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
+		  //last_transmit_time = HAL_GetTick();
+	  }
+
+
+
   }
   /* USER CODE END 3 */
 }

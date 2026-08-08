@@ -10,5 +10,6 @@
 
 
 void BMP280_SelfTest(void);
+void MPU9250_SelfTest(void);
 
 #endif /* INC_SELF_TEST_H_ */

@@ -1,0 +1,156 @@
+/*
+ * BMP280.c
+ *
+ *  Created on: 30-Jul-2026
+ *      Author: sumed
+ */
+#include "main.h"
+#include "BMP280.h"
+#include "string.h"
+#include "stdio.h"
+
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
+
+#define BMP280_ADDRESS (0x76 << 1)
+
+static uint16_t dig_T1, dig_P1;
+static int16_t dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
+static int32_t t_fine;
+
+uint8_t BMP280_FindAddress(void)
+{
+	HAL_StatusTypeDef status;
+
+	    status = HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100);
+
+	    char msg[64];
+	    sprintf(msg, "Status = %d\r\n", status);
+	    HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+
+	    return (status == HAL_OK) ? 0x76 : 0x00;
+}
+
+HAL_StatusTypeDef BMP280_Init(void)
+{
+	uint8_t ctrl_meas =
+	    (0b010 << 5) |
+	    (0b011 << 2) |
+	    (0b11);
+
+	uint8_t config =
+	    (0b000 << 5) |
+	    (0b010 << 2);
+
+	HAL_StatusTypeDef status;
+
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF5, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
+	if(status != HAL_OK)
+	{
+		return status;
+	}
+
+	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100);
+	if(status != HAL_OK)
+	{
+		return status;
+	}
+	return HAL_OK;
+}
+
+HAL_StatusTypeDef BMP280_ReadRaw(int32_t *adc_T, int32_t *adc_P)
+{
+	HAL_StatusTypeDef status;
+	uint8_t data[6];
+
+	status = HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0xF7, I2C_MEMADD_SIZE_8BIT, data, 6, 100);
+
+	if (status != HAL_OK)
+	{
+		return status;
+	}
+
+	*adc_P =
+	    ((int32_t)data[0] << 12) |
+	    ((int32_t)data[1] << 4)  |
+	    ((int32_t)data[2] >> 4);
+
+	*adc_T =
+	    ((int32_t)data[3] << 12) |
+	    ((int32_t)data[4] << 4)  |
+	    ((int32_t)data[5] >> 4);
+	return status;
+}
+
+HAL_StatusTypeDef BMP280_LoadCalibration(void)
+{
+	uint8_t calib_data[24];
+	HAL_StatusTypeDef status;
+
+	status = HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0x88, I2C_MEMADD_SIZE_8BIT, calib_data, 24, 100);
+	if (status != HAL_OK)
+	{
+		return status;
+	}
+
+	dig_T1 = (uint16_t)(calib_data[0] | (calib_data[1] << 8));
+	dig_T2 = (int16_t)(calib_data[2] | (calib_data[3] << 8));
+	dig_T3 = (int16_t)(calib_data[4] | (calib_data[5] << 8));
+
+	dig_P1 = (uint16_t)(calib_data[6] | (calib_data[7] << 8));
+	dig_P2 = (int16_t)(calib_data[8] | (calib_data[9] << 8));
+	dig_P3 = (int16_t)(calib_data[10] | (calib_data[11] << 8));
+	dig_P4 = (int16_t)(calib_data[12] | (calib_data[13] << 8));
+	dig_P5 = (int16_t)(calib_data[14] | (calib_data[15] << 8));
+	dig_P6 = (int16_t)(calib_data[16] | (calib_data[17] << 8));
+	dig_P7 = (int16_t)(calib_data[18] | (calib_data[19] << 8));
+	dig_P8 = (int16_t)(calib_data[20] | (calib_data[21] << 8));
+	dig_P9 = (int16_t)(calib_data[22] | (calib_data[23] << 8));
+
+	return HAL_OK;
+}
+
+
+
+
+// Returns temperature in DegC, resolution is 0.01 DegC. Output value of “5123” equals 51.23 DegC.
+// t_fine carries fine temperature as global value
+int32_t BMP280_CompensateTemp(int32_t adc_T)
+{
+	int32_t var1, var2, T;
+
+	var1 = ((((adc_T>>3) - ((int32_t)dig_T1<<1))) * ((int32_t)dig_T2)) >> 11;
+
+	var2 = (((((adc_T>>4) - ((int32_t)dig_T1)) * ((adc_T>>4) - ((int32_t)dig_T1))) >> 12) * ((int32_t)dig_T3)) >> 14;
+
+	t_fine = var1 + var2;
+
+	T = (t_fine * 5 + 128) >> 8;
+
+	return T;
+}
+
+// Returns pressure in Pa as unsigned 32 bit integer in Q24.8 format (24 integer bits and 8 fractional bits).
+// Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa
+uint32_t BMP280_CompensatePressure(int32_t adc_P)
+{
+	int64_t var1, var2, p;
+
+	var1 = ((int64_t)t_fine) - 128000;
+	var2 = var1 * var1 * (int64_t)dig_P6;
+	var2 = var2 + ((var1*(int64_t)dig_P5)<<17);
+	var2 = var2 + (((int64_t)dig_P4)<<35);
+	var1 = ((var1 * var1 * (int64_t)dig_P3)>>8) + ((var1 * (int64_t)dig_P2)<<12);
+	var1 = (((((int64_t)1)<<47)+var1))*((int64_t)dig_P1)>>33;
+	if (var1 == 0)
+	{
+		return 0; // avoid exception caused by division by zero
+	}
+	p = 1048576-adc_P;
+	p = (((p<<31)-var2)*3125)/var1;
+	var1 = (((int64_t)dig_P9) * (p>>13) * (p>>13)) >> 25;
+	var2 = (((int64_t)dig_P8) * p) >> 19;
+	p = ((p + var1 + var2) >> 8) + (((int64_t)dig_P7)<<4);
+	return (uint32_t)p;
+}
+
