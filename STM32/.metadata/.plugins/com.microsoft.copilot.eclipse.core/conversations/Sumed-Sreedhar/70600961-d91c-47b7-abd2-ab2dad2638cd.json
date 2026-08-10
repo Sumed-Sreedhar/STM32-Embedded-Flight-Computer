@@ -1,0 +1,216 @@
+{
+  "conversationId": "70600961-d91c-47b7-abd2-ab2dad2638cd",
+  "title": "what\u0027s worng why won;t this work?",
+  "requesterUsername": "Sumed-Sreedhar",
+  "responderUsername": "GitHub Copilot",
+  "turns": [
+    {
+      "message": {
+        "text": "what\u0027s worng why won;t this work?"
+      },
+      "currentDocument": {
+        "uri": "/Flight_Computer/Core/Src/BMP280.c"
+      },
+      "references": [],
+      "ignoredSkills": [],
+      "userLanguage": "en",
+      "source": "panel",
+      "model": "Auto",
+      "chatMode": "Agent",
+      "customChatModeId": "Agent",
+      "needToolCallConfirmation": true,
+      "turnId": "aa322120-e81e-486f-b174-2068c9bd0426",
+      "role": "user",
+      "timestamp": "2026-08-10T07:55:48.519906106Z"
+    },
+    {
+      "reply": {
+        "annotations": [],
+        "references": [],
+        "hideText": false,
+        "notifications": [],
+        "followups": [],
+        "errorMessages": [
+          {
+            "error": {
+              "message": "Oops, the model is not supported. Please try again.",
+              "code": 400
+            }
+          }
+        ],
+        "editAgentRounds": [],
+        "panelMessages": [],
+        "steps": [],
+        "agentMessages": [],
+        "data": {},
+        "modelName": "Claude Haiku 4.5",
+        "billingMultiplier": 1.0
+      },
+      "turnId": "defa8daa-fccb-46e4-a6cc-59584c6325e3",
+      "role": "copilot",
+      "timestamp": "2026-08-10T07:55:50.208928266Z"
+    },
+    {
+      "message": {
+        "text": "chjeck why thisnisnt working"
+      },
+      "currentDocument": {
+        "uri": "/Flight_Computer/Core/Src/BMP280.c"
+      },
+      "references": [
+        {
+          "uri": "/Flight_Computer/Core/Src/BMP280.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/BMP280.h"
+        },
+        {
+          "uri": "/BMP280_test/Core/Src/main.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/main.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/self_test.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/sensor_data.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/sensor_data.h"
+        },
+        {
+          "uri": "/BMP280_test/Core/Src/MPU9250.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/MPU9250.c"
+        },
+        {
+          "uri": "/BMP280_test/Core/Inc/MPU9250.h"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/MPU9250.h"
+        }
+      ],
+      "ignoredSkills": [],
+      "userLanguage": "en",
+      "source": "panel",
+      "model": "Auto",
+      "chatMode": "Agent",
+      "customChatModeId": "Agent",
+      "needToolCallConfirmation": true,
+      "turnId": "7ae03c9c-686d-4544-aee6-f768641014ad",
+      "role": "user",
+      "timestamp": "2026-08-10T07:57:28.968150657Z"
+    },
+    {
+      "reply": {
+        "annotations": [],
+        "references": [],
+        "hideText": false,
+        "notifications": [],
+        "followups": [],
+        "errorMessages": [
+          {
+            "error": {
+              "message": "Oops, the model is not supported. Please try again.",
+              "code": 400
+            }
+          }
+        ],
+        "editAgentRounds": [],
+        "panelMessages": [],
+        "steps": [],
+        "agentMessages": [],
+        "data": {},
+        "modelName": "Claude Haiku 4.5",
+        "billingMultiplier": 1.0
+      },
+      "turnId": "01982b1f-2886-4f9c-9747-a5becbbf3224",
+      "role": "copilot",
+      "timestamp": "2026-08-10T07:57:28.981998168Z"
+    },
+    {
+      "message": {
+        "text": "deos it work now?"
+      },
+      "currentDocument": {
+        "uri": "/Flight_Computer/Core/Src/BMP280.c"
+      },
+      "references": [
+        {
+          "uri": "/Flight_Computer/Core/Src/BMP280.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/BMP280.h"
+        },
+        {
+          "uri": "/BMP280_test/Core/Src/main.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/main.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/self_test.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/sensor_data.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/sensor_data.h"
+        },
+        {
+          "uri": "/BMP280_test/Core/Src/MPU9250.c"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Src/MPU9250.c"
+        },
+        {
+          "uri": "/BMP280_test/Core/Inc/MPU9250.h"
+        },
+        {
+          "uri": "/Flight_Computer/Core/Inc/MPU9250.h"
+        }
+      ],
+      "ignoredSkills": [],
+      "userLanguage": "en",
+      "source": "panel",
+      "model": "Auto",
+      "chatMode": "Agent",
+      "customChatModeId": "Agent",
+      "needToolCallConfirmation": true,
+      "turnId": "3be90baf-ade9-48ce-ba77-cbbd06ca55c7",
+      "role": "user",
+      "timestamp": "2026-08-10T07:58:08.955988558Z"
+    },
+    {
+      "reply": {
+        "annotations": [],
+        "references": [],
+        "hideText": false,
+        "notifications": [],
+        "followups": [],
+        "errorMessages": [
+          {
+            "error": {
+              "message": "Oops, the model is not supported. Please try again.",
+              "code": 400
+            }
+          }
+        ],
+        "editAgentRounds": [],
+        "panelMessages": [],
+        "steps": [],
+        "agentMessages": [],
+        "data": {},
+        "modelName": "Claude Haiku 4.5",
+        "billingMultiplier": 1.0
+      },
+      "turnId": "abbc5240-1f4b-4fd5-bf33-b8b0dce526c8",
+      "role": "copilot",
+      "timestamp": "2026-08-10T07:58:08.967365522Z"
+    }
+  ],
+  "creationDate": "2026-08-10T07:55:48.512774413Z",
+  "lastMessageDate": "2026-08-10T07:58:11.104994860Z"
+}

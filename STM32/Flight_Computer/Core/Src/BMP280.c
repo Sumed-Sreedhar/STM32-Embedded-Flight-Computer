@@ -19,13 +19,17 @@ static uint16_t dig_T1, dig_P1;
 static int16_t dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
 static int32_t t_fine;
 
-uint8_t BMP280_FindAddress(void)
+HAL_StatusTypeDef BMP280_FindAddress(void)
 {
-	if (HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100) == HAL_OK)
+	HAL_StatusTypeDef status;
+
+	status = HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100);
+
+	if (status == HAL_OK)
 	{
-		return BMP280_ADDRESS;
+		return HAL_OK;
 	}
-    return 0x00;
+    return status;
 }
 
 HAL_StatusTypeDef BMP280_Init(void)

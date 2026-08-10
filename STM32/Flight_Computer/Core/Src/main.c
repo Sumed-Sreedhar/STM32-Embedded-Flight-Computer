@@ -31,6 +31,7 @@
 #include "sensor_data.h"
 #include "string.h"
 #include "stdio.h"
+#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -105,19 +106,20 @@ int main(void)
   /* USER CODE BEGIN 2 */
   current_system_state = SELF_TEST;
 
-  //BMP280_SelfTest();
-  MPU9250_SelfTest();
+  BMP280_SelfTest();
+  //MPU9250_SelfTest();
 
   // BM280 Variables
   int32_t temp_c;
   uint32_t pressure_pa;
 
-  // MPU9250 Variables
+  /*MPU9250 Variables*/
   float accel_x, accel_y, accel_z;
   float gyro_x, gyro_y, gyro_z;
   float temp_raw;
 
   uint32_t last_transmit_time = 0;
+  char BMP_data[300];
   char mpu_data[300];
   /* USER CODE END 2 */
 
@@ -136,7 +138,16 @@ int main(void)
 	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
 	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
 
-	  /* Read IMU data from MPU9250 sensor */
+	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld C, Pressure: %lu Pa\r\n", temp_c, pressure_pa);
+
+	  if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
+	  {
+		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
+		  last_transmit_time = HAL_GetTick();
+	  }
+
+	  /* Read IMU data from MPU9250 sensor*/
+
 	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
 			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw);
 
@@ -161,12 +172,11 @@ int main(void)
 			  gyro_x, gyro_y, gyro_z,
 			  temp_raw);
 
-	  //if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
+	  if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
 	  {
-		  //HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-		  //last_transmit_time = HAL_GetTick();
+		  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
+		 last_transmit_time = HAL_GetTick();
 	  }
-
 
 
   }
