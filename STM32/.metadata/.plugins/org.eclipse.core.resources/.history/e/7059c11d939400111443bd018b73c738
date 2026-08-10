@@ -107,7 +107,7 @@ int main(void)
   current_system_state = SELF_TEST;
 
   BMP280_SelfTest();
-  MPU9250_SelfTest();
+  //MPU9250_SelfTest();
 
   // BM280 Variables
   int32_t temp_c;

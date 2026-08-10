@@ -227,7 +227,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
- // I2C_ClearBusyFlagErratum(&hi2c1, 1000);   // call it here, after I2C1 is inited
+  I2C_ClearBusyFlagErratum(&hi2c1, 1000);   // call it here, after I2C1 is inited
 
 
   uint8_t id;
