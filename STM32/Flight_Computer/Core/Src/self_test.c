@@ -16,24 +16,29 @@ extern UART_HandleTypeDef huart2;
 
 void BMP280_SelfTest(void)
 {
-	if (BMP280_FindAddress() != HAL_OK)
+	uint8_t chip_id;
+
+	if (BMP280_ReadID(&chip_id) != HAL_OK)
 	{
 	    current_health_state = CRITICAL_FAULT;
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"BMP ADDRESS FAIL\r\n", 18, HAL_MAX_DELAY);
+	    return;
+	}
+
+	if(chip_id != BMP280_CHIP_ID)
+	{
+	    current_health_state = CRITICAL_FAULT;
 	    return;
 	}
 
 	if (BMP280_Init() != HAL_OK)
 	{
 	    current_health_state = FAULT;
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"BMP INIT FAIL\r\n", 15, HAL_MAX_DELAY);
 	    return;
 	}
 
 	if(BMP280_LoadCalibration() != HAL_OK)
 		{
 		    current_health_state = FAULT;
-		    //HAL_UART_Transmit(&huart2, (uint8_t*)"BMP CALIBRATION FAIL\r\n", 22, HAL_MAX_DELAY);
 		    return;
 		}
 
@@ -41,7 +46,6 @@ void BMP280_SelfTest(void)
 	if (BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw) != HAL_OK)
 	{
 	    current_health_state = FAULT;
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"BMP RAW READ FAIL\r\n", 19, HAL_MAX_DELAY);
 	    return;
 	}
 

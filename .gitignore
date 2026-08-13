@@ -17,17 +17,25 @@ slprj/
 work/
 *.autosave
 *.asv
-
-# Simulation cache
 cache/
 
 # ==========================
-# STM32CubeIDE
+# STM32CubeIDE / Eclipse
 # ==========================
+.metadata/
+.history/
+
+# Eclipse project metadata
+*.pdom
+*.markers
+*.markers.snap
+*.snap
+
+# Build output
 Debug/
 Release/
 
-# Build files
+# Build artifacts
 *.o
 *.d
 *.elf
@@ -35,8 +43,6 @@ Release/
 *.hex
 *.map
 
-# Logs
+# Logs / temporary files
 *.log
-
-# Temporary
 *.tmp

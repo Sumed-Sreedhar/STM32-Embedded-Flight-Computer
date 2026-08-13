@@ -7,29 +7,48 @@
 #include "main.h"
 #include "BMP280.h"
 
-extern I2C_HandleTypeDef hi2c1;
-extern UART_HandleTypeDef huart2;
-
-#define BMP280_ADDRESS (0x76 << 1)
-#define BMP280_TIMEOUT 100
-#define CTRL_MEAS 0xF4
-#define CONFIG 0xF5
+extern SPI_HandleTypeDef hspi2;
 
 static uint16_t dig_T1, dig_P1;
 static int16_t dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
 static int32_t t_fine;
 
-HAL_StatusTypeDef BMP280_FindAddress(void)
+void BMP280_CS_Low(void)
+{
+    HAL_GPIO_WritePin(CS_BMP_GPIO_Port, CS_BMP_Pin, GPIO_PIN_RESET);
+}
+
+void BMP280_CS_High(void)
+{
+    HAL_GPIO_WritePin(CS_BMP_GPIO_Port, CS_BMP_Pin, GPIO_PIN_SET);
+}
+
+HAL_StatusTypeDef BMP280_ReadID(uint8_t *chip_id)
 {
 	HAL_StatusTypeDef status;
 
-	status = HAL_I2C_IsDeviceReady(&hi2c1, BMP280_ADDRESS, 3, 100);
+	BMP280_CS_Low();
+	uint8_t reg = BMP280_REG_ID | 0x80; // Set MSB for read operation
 
-	if (status == HAL_OK)
+	status = HAL_SPI_Transmit(&hspi2, &reg, 1, BMP280_TIMEOUT);
+
+	if (status != HAL_OK)
 	{
-		return HAL_OK;
+		BMP280_CS_High();
+		return status;
 	}
-    return status;
+
+	status = HAL_SPI_Receive(&hspi2, chip_id, 1, BMP280_TIMEOUT);
+
+	if (status != HAL_OK)
+	{
+		BMP280_CS_High();
+		return status;
+	}
+
+	BMP280_CS_High();
+	return status;
+
 }
 
 HAL_StatusTypeDef BMP280_Init(void)
@@ -44,30 +63,66 @@ HAL_StatusTypeDef BMP280_Init(void)
 	    (0b010 << 2);
 
 	HAL_StatusTypeDef status;
+	uint8_t reg_ctrl = CTRL_MEAS & 0x7F; // Set MSB for write operation
+	uint8_t reg_config = CONFIG & 0x7F; // Set MSB for write operation
 
-	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, CONFIG, I2C_MEMADD_SIZE_8BIT, &config, 1, 100);
+	BMP280_CS_Low();
+
+	status = HAL_SPI_Transmit(&hspi2, &reg_config, 1, BMP280_TIMEOUT);
+	if(status != HAL_OK)
+		{
+		BMP280_CS_High();
+		return status;
+		}
+
+	status = HAL_SPI_Transmit(&hspi2, &config, 1, BMP280_TIMEOUT);
 	if(status != HAL_OK)
 	{
+		BMP280_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDRESS, CTRL_MEAS, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100);
+	BMP280_CS_High();
+
+	BMP280_CS_Low();
+	status = HAL_SPI_Transmit(&hspi2, &reg_ctrl, 1, BMP280_TIMEOUT);
+	if(status != HAL_OK)
+		{
+		BMP280_CS_High();
+		return status;
+		}
+
+	status = HAL_SPI_Transmit(&hspi2, &ctrl_meas, 1, BMP280_TIMEOUT);
 	if(status != HAL_OK)
 	{
+		BMP280_CS_High();
 		return status;
 	}
-	return HAL_OK;
+
+	BMP280_CS_High();
+	return status;
 }
 
 HAL_StatusTypeDef BMP280_ReadRaw(int32_t *adc_T, int32_t *adc_P)
 {
 	HAL_StatusTypeDef status;
 	uint8_t data[6];
+	uint8_t reg = PRESSURE_DATA_START | 0x80; // Set MSB for read operation
 
-	status = HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0xF7, I2C_MEMADD_SIZE_8BIT, data, 6, 100);
+	BMP280_CS_Low();
+	status = HAL_SPI_Transmit(&hspi2, &reg, 1, BMP280_TIMEOUT);
 
 	if (status != HAL_OK)
 	{
+		BMP280_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Receive(&hspi2, data, 6, BMP280_TIMEOUT);
+
+	if (status != HAL_OK)
+	{
+		BMP280_CS_High();
 		return status;
 	}
 
@@ -80,6 +135,8 @@ HAL_StatusTypeDef BMP280_ReadRaw(int32_t *adc_T, int32_t *adc_P)
 	    ((int32_t)data[3] << 12) |
 	    ((int32_t)data[4] << 4)  |
 	    ((int32_t)data[5] >> 4);
+
+	BMP280_CS_High();
 	return status;
 }
 
@@ -87,10 +144,20 @@ HAL_StatusTypeDef BMP280_LoadCalibration(void)
 {
 	uint8_t calib_data[24];
 	HAL_StatusTypeDef status;
+	uint8_t calib_reg = CALIBRATION_DATA_START | 0x80; // Set MSB for read operation
 
-	status = HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDRESS, 0x88, I2C_MEMADD_SIZE_8BIT, calib_data, 24, 100);
+	BMP280_CS_Low();
+	status = HAL_SPI_Transmit(&hspi2, &calib_reg, 1, BMP280_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		BMP280_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Receive(&hspi2, calib_data, 24, BMP280_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		BMP280_CS_High();
 		return status;
 	}
 
@@ -108,7 +175,8 @@ HAL_StatusTypeDef BMP280_LoadCalibration(void)
 	dig_P8 = (int16_t)(calib_data[20] | (calib_data[21] << 8));
 	dig_P9 = (int16_t)(calib_data[22] | (calib_data[23] << 8));
 
-	return HAL_OK;
+	BMP280_CS_High();
+	return status;
 }
 
 
@@ -154,4 +222,3 @@ uint32_t BMP280_CompensatePressure(int32_t adc_P)
 	p = ((p + var1 + var2) >> 8) + (((int64_t)dig_P7)<<4);
 	return (uint32_t)p;
 }
-

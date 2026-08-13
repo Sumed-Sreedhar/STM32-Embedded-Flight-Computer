@@ -53,6 +53,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+SPI_HandleTypeDef hspi2;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -63,6 +65,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -103,11 +106,18 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+  char msg[] = "MAIN STARTED\r\n";
+  HAL_UART_Transmit(&huart2,
+                    (uint8_t *)msg,
+                    strlen(msg),
+                    HAL_MAX_DELAY);
+
   current_system_state = SELF_TEST;
 
   BMP280_SelfTest();
-  MPU9250_SelfTest();
+  //MPU9250_SelfTest();
 
   // BM280 Variables
   int32_t temp_c;
@@ -138,7 +148,10 @@ int main(void)
 	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
 	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
 
-	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld C, Pressure: %lu Pa\r\n", temp_c, pressure_pa);
+	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n",
+	          temp_c / 100,
+	          temp_c % 100,
+	          pressure_pa);
 
 	  if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
 	  {
@@ -146,7 +159,7 @@ int main(void)
 		  last_transmit_time = HAL_GetTick();
 	  }
 
-	  /* Read IMU data from MPU9250 sensor*/
+	  /* Read IMU data from MPU9250 sensor
 
 	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
 			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw);
@@ -174,9 +187,9 @@ int main(void)
 
 	  if(HAL_GetTick() - last_transmit_time >= 1000) // Transmit every 1 second
 	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-		 last_transmit_time = HAL_GetTick();
-	  }
+	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
+	  	  last_transmit_time = HAL_GetTick();
+	  }*/
 
 
   }
@@ -265,6 +278,44 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -316,6 +367,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_BMP_GPIO_Port, CS_BMP_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
@@ -323,6 +377,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CS_BMP_Pin */
+  GPIO_InitStruct.Pin = CS_BMP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CS_BMP_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : FAULT_LED_Pin STATUS_LED_Pin NORMAL_LED_Pin LD2_Pin */
   GPIO_InitStruct.Pin = FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin;

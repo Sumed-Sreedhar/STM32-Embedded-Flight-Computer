@@ -1,14 +1,0 @@
-/*
- * MPU9250.c
- *
- *  Created on: 01-Aug-2026
- *      Author: sumed
- */
-
-
-#include "MPU9250.h"
-
-extern I2C_HandleTypeDef hi2c1;
-
-uint8_t MPU9250_FindAddress(void){
-	for(uint8_t address = 0x0; address <= 0x7F; address++)	{		if (HAL_I2C_IsDeviceReady(&hi2c1, address << 1, 3, 100) == HAL_OK)		{			return address << 1;		}	}	return 0x00;}
