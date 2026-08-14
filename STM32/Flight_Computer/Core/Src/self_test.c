@@ -54,30 +54,28 @@ void BMP280_SelfTest(void)
 
 void MPU9250_SelfTest(void)
 {
-	if (MPU9250_FindAddress() != 0x68)
+	uint8_t chip_id;
+
+	if (MPU9250_Who_AM_I(&chip_id) != HAL_OK)
 	{
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"MPU ADDRESS FAIL\r\n", 18, HAL_MAX_DELAY);
 	    current_health_state = CRITICAL_FAULT;
 	    return;
 	}
 
-	if (MPU9250_Init() != HAL_OK)
+	if(chip_id != MPU9250_CHIP_ID)
 	{
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"MPU INIT FAIL\r\n", 15, HAL_MAX_DELAY);
-	    current_health_state = FAULT;
-	    return;
+		current_health_state = CRITICAL_FAULT;
+		return;
 	}
 
-	if (MPU9250_Who_AM_I() != HAL_OK)
+	if (MPU9250_Init() != HAL_OK)
 	{
-	    //HAL_UART_Transmit(&huart2, (uint8_t*)"MPU WHOAMI FAIL\r\n", 17, HAL_MAX_DELAY);
 	    current_health_state = FAULT;
 	    return;
 	}
 
 	if (MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z, &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw) != HAL_OK)
 	{
-		//HAL_UART_Transmit(&huart2, (uint8_t*)"MPU RAW READ FAIL\r\n", 19, HAL_MAX_DELAY);
 	    current_health_state = FAULT;
 	    return;
 	}

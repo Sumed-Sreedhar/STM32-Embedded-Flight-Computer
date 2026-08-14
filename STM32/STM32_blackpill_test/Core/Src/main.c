@@ -21,17 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "system_health.h"
-#include "system_state.h"
-#include "self_test.h"
-#include "button.h"
-#include "led.h"
-#include "BMP280.h"
-#include "MPU9250.h"
-#include "sensor_data.h"
-#include "string.h"
-#include "stdio.h"
-#include <stdbool.h>
+#include <string.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -53,19 +44,17 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-SPI_HandleTypeDef hspi2;
-
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_SPI2_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -104,34 +93,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
   MX_I2C1_Init();
-  MX_SPI2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  char msg[] = "MAIN STARTED\r\n";
-  HAL_UART_Transmit(&huart2,
-                    (uint8_t *)msg,
-                    strlen(msg),
-                    HAL_MAX_DELAY);
+  uint8_t chip_id;
+  char msg[64];
+  HAL_StatusTypeDef status;
 
-  current_system_state = SELF_TEST;
-
-  BMP280_SelfTest();
-  MPU9250_SelfTest();
-
-  /* BM280 Variables */
-  int32_t temp_c;
-  uint32_t pressure_pa;
-
-  /* MPU9250 Variables */
-  float accel_x, accel_y, accel_z;
-  float gyro_x, gyro_y, gyro_z;
-  float temp_raw;
-
-  uint32_t BMP_last_transmit_time = 0;
-  uint32_t MPU_last_transmit_time =0;
-  char BMP_data[300];
-  char mpu_data[300];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -141,61 +109,29 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  handle_system_state();
-	  handle_system_health();
+	  status = HAL_I2C_Mem_Read(&hi2c1,
+	                            0x76 << 1,
+	                            0xD0,
+	                            I2C_MEMADD_SIZE_8BIT,
+	                            &chip_id,
+	                            1,
+	                            100);
 
-	  /* Read temperature and pressure data from BMP280 sensor */
-	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
-	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
-	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
-
-	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
-			  "\r\n BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu \r\n",
-	          temp_c / 100,
-	          temp_c % 100,
-	          pressure_pa,
-			  sensor_data.temperature_raw,
-			  sensor_data.pressure_raw);
-
-	  if(HAL_GetTick() - BMP_last_transmit_time >= 1000) // Transmit every 1 second
+	  if (status == HAL_OK)
 	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
-		  BMP_last_transmit_time = HAL_GetTick();
+	      sprintf(msg, "BMP280 ID: 0x%02X\r\n", chip_id);
+	  }
+	  else
+	  {
+	      sprintf(msg, "I2C ERROR: %d\r\n", status);
 	  }
 
-	  /* Read IMU data from MPU9250 sensor */
+	  HAL_UART_Transmit(&huart2,
+	                    (uint8_t *)msg,
+	                    strlen(msg),
+	                    100);
 
-	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
-			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw);
-
-	  accel_x = sensor_data.accel_raw_x/16384.0f;
-	  accel_y = sensor_data.accel_raw_y/16384.0f;
-	  accel_z = sensor_data.accel_raw_z/16384.0f;
-	  gyro_x = sensor_data.gyro_raw_x/131.0f;
-	  gyro_y = sensor_data.gyro_raw_y/131.0f;
-	  gyro_z = sensor_data.gyro_raw_z/131.0f;
-	  temp_raw = (sensor_data.temp_raw/333.87) + 21; // Convert raw temperature to degrees Celsius
-
-	  sprintf(mpu_data, "\r\n Accel_raw X: %d, Accel_raw Y: %d, Accel_raw Z: %d,"
-			  "\r\n Gyro_raw X: %d, Gyro_raw Y: %d, Gyro_raw Z: %d,"
-			  " \r\n Temp_raw: %d,"
-			  "\r\n Accel X: %.2f, Accel Y: %.2f, Accel Z: %.2f,"
-			  " \r\n Gyro X: %.2f, Gyro Y: %.2f, Gyro Z: %.2f,"
-			  " \r\n Temp: %.2f C\r\n",
-			  sensor_data.accel_raw_x, sensor_data.accel_raw_y, sensor_data.accel_raw_z,
-			  sensor_data.gyro_raw_x, sensor_data.gyro_raw_y, sensor_data.gyro_raw_z,
-			  sensor_data.temp_raw,
-			  accel_x, accel_y, accel_z,
-			  gyro_x, gyro_y, gyro_z,
-			  temp_raw);
-
-	  if(HAL_GetTick() - MPU_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-	  	  MPU_last_transmit_time = HAL_GetTick();
-	  }
-
-
+	  HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -212,7 +148,7 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -220,13 +156,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 16;
-  RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-  RCC_OscInitStruct.PLL.PLLQ = 2;
-  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -236,12 +166,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -278,44 +208,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI2_Init(void)
-{
-
-  /* USER CODE BEGIN SPI2_Init 0 */
-
-  /* USER CODE END SPI2_Init 0 */
-
-  /* USER CODE BEGIN SPI2_Init 1 */
-
-  /* USER CODE END SPI2_Init 1 */
-  /* SPI2 parameter configuration*/
-  hspi2.Instance = SPI2;
-  hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI2_Init 2 */
-
-  /* USER CODE END SPI2_Init 2 */
 
 }
 
@@ -359,55 +251,13 @@ static void MX_USART2_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, CS_BMP_Pin|CS_MPU_Pin, GPIO_PIN_SET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : CS_BMP_Pin CS_MPU_Pin */
-  GPIO_InitStruct.Pin = CS_BMP_Pin|CS_MPU_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : FAULT_LED_Pin STATUS_LED_Pin NORMAL_LED_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : FAULT_BT_Pin STATE_BT_Pin */
-  GPIO_InitStruct.Pin = FAULT_BT_Pin|STATE_BT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

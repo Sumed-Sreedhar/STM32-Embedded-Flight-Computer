@@ -10,40 +10,41 @@
 #include "main.h"
 #include "sensor_data.h"
 
-extern I2C_HandleTypeDef hi2c1;
+extern SPI_HandleTypeDef hspi2;
 
-#define MPU9250_ADDRESS (0x68 << 1)
-#define MPU9250_SMPLRT_DIV       0x19
-#define MPU9250_CONFIG           0x1A
-#define MPU9250_GYRO_CONFIG      0x1B
-#define MPU9250_ACCEL_CONFIG     0x1C
-#define MPU9250_ACCEL_CONFIG2    0x1D
-#define MPU9250_INT_ENABLE       0x38
-#define MPU9250_PWR_MGMT_1       0x6B
-#define MPU9250_PWR_MGMT_2       0x6C
-#define MPU9250_WHO_AM_I         0x75
-#define MPU9250_ACCEL_XOUT_H     0x3B
-#define MPU9250_TIMEOUT 100
 
-uint8_t MPU9250_FindAddress(void){
-	if (HAL_I2C_IsDeviceReady(&hi2c1, MPU9250_ADDRESS, 3, 100) == HAL_OK)	{		return 0x68;	}	return 0x00;}
-
-HAL_StatusTypeDef MPU9250_Who_AM_I(void)
+void MPU9250_CS_Low(void)
 {
-	uint8_t who_am_i;
+	HAL_GPIO_WritePin(CS_MPU_GPIO_Port, CS_MPU_Pin, GPIO_PIN_RESET);
+}
+
+void MPU9250_CS_High(void)
+{
+	HAL_GPIO_WritePin(CS_MPU_GPIO_Port, CS_MPU_Pin, GPIO_PIN_SET);
+}
+
+HAL_StatusTypeDef MPU9250_Who_AM_I(uint8_t *chip_id)
+{
 	HAL_StatusTypeDef status;
 
-	status = HAL_I2C_Mem_Read(&hi2c1, MPU9250_ADDRESS, MPU9250_WHO_AM_I, I2C_MEMADD_SIZE_8BIT, &who_am_i, 1, MPU9250_TIMEOUT);
+	MPU9250_CS_Low();
+	uint8_t reg = MPU9250_WHO_AM_I | 0x80; // Set MSB for read operation
+
+	status = HAL_SPI_Transmit(&hspi2, &reg, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	if (who_am_i != 0x71)
+	status = HAL_SPI_Receive(&hspi2, chip_id, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
 	{
-		return HAL_ERROR;
+	    MPU9250_CS_High();
+	    return status;
 	}
 
+	MPU9250_CS_High();
 	return HAL_OK;
 }
 
@@ -58,77 +59,178 @@ HAL_StatusTypeDef MPU9250_Init(void){
 	uint8_t INT_ENABLE = 0x00; // Disable interrupts
 
 	HAL_StatusTypeDef status;
+	uint8_t reg_pwr_mgmt = MPU9250_PWR_MGMT_1 & 0x7F; // Set MSB for write operation
+	uint8_t reg_pwr_mgmt_2 = MPU9250_PWR_MGMT_2 & 0x7F; // Set MSB for write operation
+	uint8_t reg_config = MPU9250_CONFIG & 0x7F; // Set MSB for write operation
+	uint8_t reg_smplrt_div = MPU9250_SMPLRT_DIV & 0x7F; // Set MSB for write operation
+	uint8_t reg_gyro_config = MPU9250_GYRO_CONFIG & 0x7F; // Set MSB for write operation
+	uint8_t reg_accel_config = MPU9250_ACCEL_CONFIG & 0x7F; // Set MSB for write operation
+	uint8_t reg_accel_config2 = MPU9250_ACCEL_CONFIG2 & 0x7F; // Set MSB for write operation
+	uint8_t reg_int_enable = MPU9250_INT_ENABLE & 0x7F; // Set MSB for write operation
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_PWR_MGMT_1, I2C_MEMADD_SIZE_8BIT, &PWR_MGMT_1, 1, MPU9250_TIMEOUT);
+	MPU9250_CS_Low();
 
+	status = HAL_SPI_Transmit(&hspi2, &reg_pwr_mgmt, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_PWR_MGMT_2, I2C_MEMADD_SIZE_8BIT, &PWR_MGMT_2, 1, MPU9250_TIMEOUT);
-
+	status = HAL_SPI_Transmit(&hspi2, &PWR_MGMT_1, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_CONFIG, I2C_MEMADD_SIZE_8BIT, &CONFIG, 1, MPU9250_TIMEOUT);
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
 
+	status = HAL_SPI_Transmit(&hspi2, &reg_pwr_mgmt_2, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_SMPLRT_DIV, I2C_MEMADD_SIZE_8BIT, &SMPLRT_DIV, 1, MPU9250_TIMEOUT);
-
+	status = HAL_SPI_Transmit(&hspi2, &PWR_MGMT_2, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_GYRO_CONFIG, I2C_MEMADD_SIZE_8BIT, &GYRO_CONFIG, 1, MPU9250_TIMEOUT);
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
 
+	status = HAL_SPI_Transmit(&hspi2, &reg_config, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_ACCEL_CONFIG, I2C_MEMADD_SIZE_8BIT, &ACCEL_CONFIG, 1, MPU9250_TIMEOUT);
+	status = HAL_SPI_Transmit(&hspi2, &CONFIG, 1, MPU9250_TIMEOUT);
 
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_ACCEL_CONFIG2, I2C_MEMADD_SIZE_8BIT, &ACCEL_CONFIG2, 1, MPU9250_TIMEOUT);
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
 
+	status = HAL_SPI_Transmit(&hspi2, &reg_smplrt_div, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	status = HAL_I2C_Mem_Write(&hi2c1, MPU9250_ADDRESS, MPU9250_INT_ENABLE, I2C_MEMADD_SIZE_8BIT, &INT_ENABLE, 1, MPU9250_TIMEOUT);
-
+	status = HAL_SPI_Transmit(&hspi2, &SMPLRT_DIV, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
 
-	return HAL_OK;}
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
+
+	status = HAL_SPI_Transmit(&hspi2, &reg_gyro_config, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Transmit(&hspi2, &GYRO_CONFIG, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
+
+	status = HAL_SPI_Transmit(&hspi2, &reg_accel_config, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Transmit(&hspi2, &ACCEL_CONFIG, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
+
+	status = HAL_SPI_Transmit(&hspi2, &reg_accel_config2, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Transmit(&hspi2, &ACCEL_CONFIG2, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	MPU9250_CS_High();
+	MPU9250_CS_Low();
+
+	status = HAL_SPI_Transmit(&hspi2, &reg_int_enable, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+	status = HAL_SPI_Transmit(&hspi2, &INT_ENABLE, 1, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
+
+	MPU9250_CS_High();
+	return status;}
 
 HAL_StatusTypeDef MPU9250_ReadRaw(int16_t *accel_raw_x,int16_t *accel_raw_y,int16_t *accel_raw_z, int16_t *gyro_raw_x,int16_t *gyro_raw_y, int16_t *gyro_raw_z, int16_t *temp_raw)
 {
 
 	uint8_t data[14];
+	uint8_t reg = MPU9250_ACCEL_XOUT_H | 0x80; // Set MSB for read operation
 	HAL_StatusTypeDef status;
 
-	status = HAL_I2C_Mem_Read(&hi2c1, MPU9250_ADDRESS, MPU9250_ACCEL_XOUT_H, I2C_MEMADD_SIZE_8BIT, data, 14, MPU9250_TIMEOUT);
+	MPU9250_CS_Low();
 
+	status = HAL_SPI_Transmit(&hspi2, &reg, 1, MPU9250_TIMEOUT);
 	if (status != HAL_OK)
 	{
+		MPU9250_CS_High();
 		return status;
 	}
+
+	status = HAL_SPI_Receive(&hspi2, data, 14, MPU9250_TIMEOUT);
+	if (status != HAL_OK)
+	{
+		MPU9250_CS_High();
+		return status;
+	}
+
 	// Accelerometer raw values
 	*accel_raw_x = (int16_t)((data[0] << 8) | data[1]);
 	*accel_raw_y = (int16_t)((data[2] << 8) | data[3]);
@@ -142,5 +244,6 @@ HAL_StatusTypeDef MPU9250_ReadRaw(int16_t *accel_raw_x,int16_t *accel_raw_y,int1
 	*gyro_raw_y = (int16_t)((data[10] << 8) | data[11]);
 	*gyro_raw_z = (int16_t)((data[12] << 8) | data[13]);
 
+	MPU9250_CS_High();
 	return HAL_OK;
 }

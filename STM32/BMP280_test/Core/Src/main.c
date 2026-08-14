@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
+#include "BMP280.h"
+#include "sensor_data.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,19 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BMP280_REG_CALIB       0x88
-#define BMP280_REG_ID          0xD0
-#define BMP280_REG_RESET       0xE0
-#define BMP280_REG_STATUS      0xF3
-#define BMP280_REG_CTRL_MEAS   0xF4
-#define BMP280_REG_CONFIG      0xF5
-#define BMP280_REG_PRESS_MSB   0xF7
-#define BMP280_REG_TEMP_MSB    0xFA
 
-#define BMP280_RESET_VALUE     0xB6
-
-#define CS_BMP_Pin             GPIO_PIN_0
-#define CS_BMP_GPIO_Port       GPIOC
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -61,24 +51,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint16_t dig_T1;
-int16_t  dig_T2;
-int16_t  dig_T3;
 
-uint16_t dig_P1;
-int16_t  dig_P2;
-int16_t  dig_P3;
-int16_t  dig_P4;
-int16_t  dig_P5;
-int16_t  dig_P6;
-int16_t  dig_P7;
-int16_t  dig_P8;
-int16_t  dig_P9;
-
-float temperature;
-float pressure;
-
-float t_fine;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,266 +66,37 @@ static void MX_SPI2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-void BMP280_CS_Low(void)
+void BMP280_SelfTest(void)
 {
-    HAL_GPIO_WritePin(CS_BMP_GPIO_Port, CS_BMP_Pin, GPIO_PIN_RESET);
+	uint8_t chip_id;
+
+	if (BMP280_ReadID(&chip_id) != HAL_OK)
+	{
+	    return;
+	}
+
+	if(chip_id != BMP280_CHIP_ID)
+	{
+	    return;
+	}
+
+	if (BMP280_Init() != HAL_OK)
+	{
+	    return;
+	}
+
+	if(BMP280_LoadCalibration() != HAL_OK)
+		{
+		    return;
+		}
+
+
+	if (BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw) != HAL_OK)
+	{
+	    return;
+	}
 }
 
-void BMP280_CS_High(void)
-{
-    HAL_GPIO_WritePin(CS_BMP_GPIO_Port, CS_BMP_Pin, GPIO_PIN_SET);
-}
-
-
-HAL_StatusTypeDef BMP280_WriteRegister(uint8_t reg, uint8_t data)
-{
-    uint8_t tx[2];
-
-    tx[0] = reg & 0x7F;   // Write: bit 7 = 0
-    tx[1] = data;
-
-    BMP280_CS_Low();
-
-    HAL_StatusTypeDef status =
-        HAL_SPI_Transmit(&hspi2, tx, 2, HAL_MAX_DELAY);
-
-    BMP280_CS_High();
-
-    return status;
-}
-
-
-HAL_StatusTypeDef BMP280_ReadRegisters(uint8_t reg,
-                                       uint8_t *data,
-                                       uint16_t length)
-{
-    uint8_t tx = reg | 0x80;   // Read: bit 7 = 1
-
-    BMP280_CS_Low();
-
-    HAL_StatusTypeDef status =
-        HAL_SPI_Transmit(&hspi2, &tx, 1, HAL_MAX_DELAY);
-
-    if (status == HAL_OK)
-    {
-        status =
-            HAL_SPI_Receive(&hspi2, data, length, HAL_MAX_DELAY);
-    }
-
-    BMP280_CS_High();
-
-    return status;
-}
-
-
-uint8_t BMP280_ReadID(void)
-{
-    uint8_t id = 0;
-
-    BMP280_ReadRegisters(BMP280_REG_ID, &id, 1);
-
-    return id;
-}
-
-
-void BMP280_Reset(void)
-{
-    BMP280_WriteRegister(BMP280_REG_RESET, BMP280_RESET_VALUE);
-
-    /*
-     * Bosch specifies a short delay after software reset
-     * before accessing the device again.
-     */
-    HAL_Delay(5);
-}
-
-
-void BMP280_ReadCalibration(void)
-{
-    uint8_t calib[24];
-
-    BMP280_ReadRegisters(BMP280_REG_CALIB, calib, 24);
-
-    /*
-     * Temperature calibration
-     */
-
-    dig_T1 = (uint16_t)(calib[1] << 8 | calib[0]);
-
-    dig_T2 = (int16_t)(calib[3] << 8 | calib[2]);
-
-    dig_T3 = (int16_t)(calib[5] << 8 | calib[4]);
-
-
-    /*
-     * Pressure calibration
-     */
-
-    dig_P1 = (uint16_t)(calib[7] << 8 | calib[6]);
-
-    dig_P2 = (int16_t)(calib[9] << 8 | calib[8]);
-
-    dig_P3 = (int16_t)(calib[11] << 8 | calib[10]);
-
-    dig_P4 = (int16_t)(calib[13] << 8 | calib[12]);
-
-    dig_P5 = (int16_t)(calib[15] << 8 | calib[14]);
-
-    dig_P6 = (int16_t)(calib[17] << 8 | calib[16]);
-
-    dig_P7 = (int16_t)(calib[19] << 8 | calib[18]);
-
-    dig_P8 = (int16_t)(calib[21] << 8 | calib[20]);
-
-    dig_P9 = (int16_t)(calib[23] << 8 | calib[22]);
-}
-
-
-void BMP280_Configure(void)
-{
-    /*
-     * ctrl_meas = 0x57
-     *
-     * osrs_t = 010 -> temperature oversampling x2
-     * osrs_p = 101 -> pressure oversampling x16
-     * mode   = 11  -> normal mode
-     */
-
-    BMP280_WriteRegister(BMP280_REG_CTRL_MEAS, 0x57);
-
-
-    /*
-     * config = 0x68
-     *
-     * t_sb     = 011 -> standby 250 ms
-     * filter   = 010 -> IIR filter coefficient 4
-     * spi3w_en = 0   -> normal 4-wire SPI
-     */
-
-    BMP280_WriteRegister(BMP280_REG_CONFIG, 0x68);
-}
-
-
-void BMP280_ReadRaw(int32_t *raw_temp, int32_t *raw_pressure)
-{
-    uint8_t data[6];
-
-    BMP280_ReadRegisters(BMP280_REG_PRESS_MSB, data, 6);
-
-    /*
-     * Pressure:
-     *
-     * 0xF7 = MSB
-     * 0xF8 = LSB
-     * 0xF9 = XLSB
-     */
-
-    *raw_pressure =
-        ((int32_t)data[0] << 12) |
-        ((int32_t)data[1] << 4)  |
-        ((int32_t)data[2] >> 4);
-
-
-    /*
-     * Temperature:
-     *
-     * 0xFA = MSB
-     * 0xFB = LSB
-     * 0xFC = XLSB
-     */
-
-    *raw_temp =
-        ((int32_t)data[3] << 12) |
-        ((int32_t)data[4] << 4)  |
-        ((int32_t)data[5] >> 4);
-}
-
-
-float BMP280_CompensateTemperature(int32_t adc_T)
-{
-    float var1;
-    float var2;
-    float T;
-
-    var1 =
-        (((float)adc_T / 16384.0f) -
-         ((float)dig_T1 / 1024.0f))
-        * (float)dig_T2;
-
-    var2 =
-        (((float)adc_T / 131072.0f) -
-         ((float)dig_T1 / 8192.0f));
-
-    var2 =
-        var2 * var2 * (float)dig_T3;
-
-    t_fine = var1 + var2;
-
-    T = t_fine / 5120.0f;
-
-    return T;
-}
-
-
-float BMP280_CompensatePressure(int32_t adc_P)
-{
-    float var1;
-    float var2;
-    float p;
-
-    var1 = (t_fine / 2.0f) - 64000.0f;
-
-    var2 = var1 * var1 * ((float)dig_P6 / 32768.0f);
-
-    var2 =
-        var2 +
-        var1 * ((float)dig_P5 * 2.0f);
-
-    var2 =
-        (var2 / 4.0f) +
-        ((float)dig_P4 * 65536.0f);
-
-    var1 =
-        ((float)dig_P3 * var1 * var1 / 524288.0f +
-         (float)dig_P2 * var1) / 524288.0f;
-
-    var1 =
-        (1.0f + var1 / 32768.0f) *
-        (float)dig_P1;
-
-    if (var1 == 0.0f)
-    {
-        return 0.0f;
-    }
-
-    p = 1048576.0f - (float)adc_P;
-
-    p = (p - (var2 / 4096.0f)) * 6250.0f / var1;
-
-    var1 =
-        (float)dig_P9 * p * p / 2147483648.0f;
-
-    var2 =
-        p * ((float)dig_P8 / 32768.0f);
-
-    p =
-        p +
-        (var1 + var2 + (float)dig_P7) / 16.0f;
-
-    return p;
-}
-
-
-int _write(int file, char *ptr, int len)
-{
-    HAL_UART_Transmit(&huart2,
-                      (uint8_t *)ptr,
-                      len,
-                      HAL_MAX_DELAY);
-
-    return len;
-}
 
 /* USER CODE END 0 */
 
@@ -389,107 +133,20 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+  char msg[] = "MAIN STARTED\r\n";
+   HAL_UART_Transmit(&huart2,
+                      (uint8_t *)msg,
+                      strlen(msg),
+                      HAL_MAX_DELAY);
 
+   BMP280_SelfTest();
 
-  uint8_t id;
+   /* BM280 Variables */
+    int32_t temp_c;
+    uint32_t pressure_pa;
 
-  int32_t raw_temperature;
-  int32_t raw_pressure;
-
-
-  /*
-   * CS must be HIGH when the sensor is idle.
-   */
-
-  BMP280_CS_High();
-
-  HAL_Delay(100);
-
-
-  /*
-   * Check chip ID
-   */
-
-  printf("\r\n=============================\r\n");
-  printf("BMP280 SPI TEST\r\n");
-  printf("=============================\r\n");
-
-  id = BMP280_ReadID();
-
-  printf("CHIP ID = 0x%02X\r\n", id);
-
-  if (id != 0x58)
-  {
-      printf("BMP280 NOT DETECTED!\r\n");
-
-      while (1)
-      {
-          HAL_Delay(1000);
-      }
-  }
-
-  printf("BMP280 detected successfully!\r\n");
-
-
-  /*
-   * Software reset
-   */
-
-  printf("Resetting BMP280...\r\n");
-
-  BMP280_Reset();
-
-
-  /*
-   * Read factory calibration coefficients
-   */
-
-  printf("Reading calibration data...\r\n");
-
-  BMP280_ReadCalibration();
-
-
-  printf("\r\nCalibration coefficients:\r\n");
-
-  printf("T1 = %u\r\n", dig_T1);
-  printf("T2 = %d\r\n", dig_T2);
-  printf("T3 = %d\r\n", dig_T3);
-
-  printf("P1 = %u\r\n", dig_P1);
-  printf("P2 = %d\r\n", dig_P2);
-  printf("P3 = %d\r\n", dig_P3);
-  printf("P4 = %d\r\n", dig_P4);
-  printf("P5 = %d\r\n", dig_P5);
-  printf("P6 = %d\r\n", dig_P6);
-  printf("P7 = %d\r\n", dig_P7);
-  printf("P8 = %d\r\n", dig_P8);
-  printf("P9 = %d\r\n", dig_P9);
-
-
-  /*
-   * Configure measurement mode.
-   */
-
-  printf("\r\nConfiguring BMP280...\r\n");
-
-  BMP280_Configure();
-
-
-  /*
-   * Read back the control registers.
-   * This verifies that our SPI writes actually worked.
-   */
-
-  uint8_t ctrl_meas;
-  uint8_t config;
-
-  BMP280_ReadRegisters(BMP280_REG_CTRL_MEAS, &ctrl_meas, 1);
-  BMP280_ReadRegisters(BMP280_REG_CONFIG, &config, 1);
-
-  printf("CTRL_MEAS = 0x%02X\r\n", ctrl_meas);
-  printf("CONFIG    = 0x%02X\r\n", config);
-
-  printf("\r\nStarting measurements...\r\n");
+    uint32_t BMP_last_transmit_time = 0;
+    char BMP_data[300];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -499,31 +156,23 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  BMP280_ReadRaw(&raw_temperature, &raw_pressure);
+	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
+	 	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
+	 	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
 
-	      temperature =
-	          BMP280_CompensateTemperature(raw_temperature);
+	 	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
+	 			  "\r\n BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu \r\n",
+	 	          temp_c / 100,
+	 	          temp_c % 100,
+	 	          pressure_pa,
+	 			  sensor_data.temperature_raw,
+	 			  sensor_data.pressure_raw);
 
-	      pressure =
-	          BMP280_CompensatePressure(raw_pressure);
-
-
-	      printf("RAW T = %ld | RAW P = %ld | ",
-	             raw_temperature,
-	             raw_pressure);
-
-	      printf("Temperature = %.2f C | ",
-	             temperature);
-
-	      printf("Pressure = %.2f Pa | ",
-	             pressure);
-
-	      printf("%.2f hPa\r\n",
-	             pressure / 100.0f);
-
-
-	      HAL_Delay(1000);
-
+	 	  if(HAL_GetTick() - BMP_last_transmit_time >= 1000) // Transmit every 1 second
+	 	  {
+	 		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
+	 		  BMP_last_transmit_time = HAL_GetTick();
+	 	  }
   }
   /* USER CODE END 3 */
 }
