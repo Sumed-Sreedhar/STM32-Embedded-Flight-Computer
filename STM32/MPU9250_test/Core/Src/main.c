@@ -21,18 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "system_health.h"
-#include "system_state.h"
-#include "self_test.h"
-#include "button.h"
-#include "led.h"
-#include "BMP280.h"
 #include "MPU9250.h"
 #include "sensor_data.h"
-#include "string.h"
-#include "stdio.h"
-#include <stdbool.h>
-
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,26 +38,26 @@
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
+
 /* USER CODE BEGIN PM */
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
-static void MX_I2C1_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -73,6 +65,11 @@ static void MX_SPI2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+int __io_putchar(int ch)
+{
+    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -104,99 +101,115 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
-  MX_I2C1_Init();
   MX_SPI2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  char msg[] = "MAIN STARTED\r\n";
-  HAL_UART_Transmit(&huart2,
-                    (uint8_t *)msg,
-                    strlen(msg),
-                    HAL_MAX_DELAY);
 
-  current_system_state = SELF_TEST;
+  uint8_t chip_id;
+  HAL_StatusTypeDef status;
 
-  BMP280_SelfTest();
-  MPU9250_SelfTest();
+  printf("\r\n========== DIRECT MPU SPI TEST ==========\r\n");
 
-  /* BM280 Variables */
-  int32_t temp_c;
-  uint32_t pressure_pa;
+  status = MPU9250_DirectWhoAmI(&chip_id);
 
-  /* MPU9250 Variables */
-  float accel_x, accel_y, accel_z;
-  float gyro_x, gyro_y, gyro_z;
-  float temp_raw;
+  if (status == HAL_OK)
+  {
+      printf("DIRECT WHO_AM_I: 0x%02X\r\n", chip_id);
 
-  uint32_t BMP_last_transmit_time = 0;
-  uint32_t MPU_last_transmit_time =0;
-  char BMP_data[300];
-  char mpu_data[300];
+      if (chip_id == 0x71)
+      {
+          printf("RESULT: MPU9250 DETECTED\r\n");
+      }
+      else if (chip_id == 0x70)
+      {
+          printf("RESULT: MPU6500 DETECTED\r\n");
+      }
+      else
+      {
+          printf("RESULT: UNKNOWN DEVICE / SPI PROBLEM\r\n");
+      }
+  }
+  else
+  {
+      printf("DIRECT SPI TRANSACTION FAILED\r\n");
+  }
+
+  printf("=========================================\r\n\r\n");
+
+
+ /* if (MPU9250_Init() == HAL_OK)
+  {
+      printf("MPU INIT OK\r\n");
+  }
+  else
+  {
+      printf("MPU INIT FAILED\r\n");
+  }*/
+
+  uint8_t mag_who;
+  uint8_t mag_cntl1;
+  uint8_t mag_st1;
+  uint8_t mag_st2;
+
+  int16_t mag_x;
+  int16_t mag_y;
+  int16_t mag_z;
+
+  printf("\r\n========== MAGNETOMETER DIAGNOSTIC ==========\r\n");
+
+  if (MPU9250_MagDiagnostic(&mag_who,
+                            &mag_cntl1,
+                            &mag_st1,
+                            &mag_st2,
+                            &mag_x,
+                            &mag_y,
+                            &mag_z) == HAL_OK)
+  {
+      printf("AK8963 WHO_AM_I : 0x%02X\r\n", mag_who);
+      printf("AK8963 CNTL1    : 0x%02X\r\n", mag_cntl1);
+      printf("AK8963 ST1      : 0x%02X\r\n", mag_st1);
+
+      printf("MAG X           : %d\r\n", mag_x);
+      printf("MAG Y           : %d\r\n", mag_y);
+      printf("MAG Z           : %d\r\n", mag_z);
+
+      printf("AK8963 ST2      : 0x%02X\r\n", mag_st2);
+
+      printf("==============================================\r\n\r\n");
+  }
+  else
+  {
+      printf("MAGNETOMETER DIAGNOSTIC FAILED\r\n");
+  }
+
   /* USER CODE END 2 */
+
+  /* Initialize leds */
+  BSP_LED_Init(LED2);
+
+  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
+  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  handle_system_state();
-	  handle_system_health();
+	    uint8_t chip_id;
 
-	  /* Read temperature and pressure data from BMP280 sensor */
-	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
-	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
-	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
+	    if (MPU9250_DirectWhoAmI(&chip_id) == HAL_OK)
+	    {
+	        printf("WHO_AM_I = 0x%02X\r\n", chip_id);
+	    }
+	    else
+	    {
+	        printf("SPI READ FAILED\r\n");
+	    }
 
-	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
-			  "\r\n BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu \r\n",
-	          temp_c / 100,
-	          temp_c % 100,
-	          pressure_pa,
-			  sensor_data.temperature_raw,
-			  sensor_data.pressure_raw);
-
-	  if(HAL_GetTick() - BMP_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
-		  BMP_last_transmit_time = HAL_GetTick();
-	  }
-
-	  /* Read IMU data from MPU9250 sensor */
-
-	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
-			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z,
-			  &sensor_data.temp_raw);
-
-	  accel_x = sensor_data.accel_raw_x/16384.0f;
-	  accel_y = sensor_data.accel_raw_y/16384.0f;
-	  accel_z = sensor_data.accel_raw_z/16384.0f;
-	  gyro_x = sensor_data.gyro_raw_x/131.0f;
-	  gyro_y = sensor_data.gyro_raw_y/131.0f;
-	  gyro_z = sensor_data.gyro_raw_z/131.0f;
-	  temp_raw = (sensor_data.temp_raw/333.87) + 21; // Convert raw temperature to degrees Celsius
-
-	  sprintf(mpu_data, "\r\n Accel_raw X: %d, Accel_raw Y: %d, Accel_raw Z: %d,"
-	          "\r\n Gyro_raw X: %d, Gyro_raw Y: %d, Gyro_raw Z: %d,"
-	          " \r\n Temp_raw: %d,"
-	          "\r\n Accel X: %.2f, Accel Y: %.2f, Accel Z: %.2f,"
-	          " \r\n Gyro X: %.2f, Gyro Y: %.2f, Gyro Z: %.2f,"
-	          " \r\n Temp: %.2f C\r\n",
-			  sensor_data.accel_raw_x, sensor_data.accel_raw_y, sensor_data.accel_raw_z,
-			  sensor_data.gyro_raw_x, sensor_data.gyro_raw_y, sensor_data.gyro_raw_z,
-			  sensor_data.temp_raw,
-			  accel_x, accel_y, accel_z,
-			  gyro_x, gyro_y, gyro_z,
-			  temp_raw);
-
-	  if(HAL_GetTick() - MPU_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-	  	  MPU_last_transmit_time = HAL_GetTick();
-	  }
-
-
+	    HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -246,40 +259,6 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-}
-
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C1_Init(void)
-{
-
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
-  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
@@ -372,43 +351,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, CS_BMP_Pin|CS_MPU_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(CS_MPU_GPIO_Port, CS_MPU_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : CS_BMP_Pin CS_MPU_Pin */
-  GPIO_InitStruct.Pin = CS_BMP_Pin|CS_MPU_Pin;
+  /*Configure GPIO pin : CS_MPU_Pin */
+  GPIO_InitStruct.Pin = CS_MPU_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : FAULT_LED_Pin STATUS_LED_Pin NORMAL_LED_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = FAULT_LED_Pin|STATUS_LED_Pin|NORMAL_LED_Pin|LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : FAULT_BT_Pin STATE_BT_Pin */
-  GPIO_InitStruct.Pin = FAULT_BT_Pin|STATE_BT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+  HAL_GPIO_Init(CS_MPU_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

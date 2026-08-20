@@ -1,0 +1,10 @@
+/*
+ * sensor_data.c
+ *
+ *  Created on: 30-Jul-2026
+ *      Author: sumed
+ */
+
+#include "sensor_data.h"
+
+sensor_data_t sensor_data;

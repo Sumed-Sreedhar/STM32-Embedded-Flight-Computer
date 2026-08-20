@@ -13,6 +13,8 @@
 
 void MPU9250_CS_Low(void);
 void MPU9250_CS_High(void);
+HAL_StatusTypeDef MPU9250_WriteRegister(uint8_t  register,uint8_t value);
+HAL_StatusTypeDef MPU9250_ReadRegister(uint8_t  reg,uint8_t *value);
 
 HAL_StatusTypeDef MPU9250_Who_AM_I(uint8_t *chip_id);
 HAL_StatusTypeDef MPU9250_Init(void);
@@ -29,6 +31,7 @@ HAL_StatusTypeDef MPU9250_ReadRaw(int16_t *accel_raw_x,int16_t *accel_raw_y,int1
 #define MPU9250_WHO_AM_I         0x75
 #define MPU9250_ACCEL_XOUT_H     0x3B
 #define MPU9250_TIMEOUT 		 100
-#define MPU9250_CHIP_ID 		 0x71
+#define MPU9250_CHIP_ID 		 0x70
+
 
 #endif /* INC_MPU9250_H_ */
