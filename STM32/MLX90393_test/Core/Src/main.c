@@ -19,23 +19,14 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "i2c.h"
-#include "spi.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "system_health.h"
-#include "system_state.h"
-#include "self_test.h"
-#include "button.h"
-#include "led.h"
-#include "BMP280.h"
-#include "MPU9250.h"
+#include "MLX90393.h"
 #include "sensor_data.h"
-#include "string.h"
 #include "stdio.h"
-#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -57,6 +48,17 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+volatile uint8_t mlx_data_ready = 0;
+
+/* Offsets derived from rotating the sensor 360 degrees: (Max + Min) / 2 */
+MLX90393_Offsets_t sensor_offsets = {
+    .x_offset = 0,
+    .y_offset = 0,
+    .z_offset = 0
+};
+
+MLX90393_CalibratedData_t mag_uT;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,7 +69,11 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int __io_putchar(int ch)
+{
+    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -99,34 +105,19 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
   MX_I2C1_Init();
-  MX_SPI2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  char msg[] = "MAIN STARTED\r\n";
-  HAL_UART_Transmit(&huart2,
-                    (uint8_t *)msg,
-                    strlen(msg),
-                    HAL_MAX_DELAY);
+  printf("\r\n--- MLX90393 Calibrated uT Readings ---\r\n");
 
-  current_system_state = SELF_TEST;
+    MLX90393_Reset();
+    if (MLX90393_Configure() == HAL_OK)
+    {
+        printf("Sensor Configured Successfully.\r\n");
+    }
 
-  BMP280_SelfTest();
-  MPU9250_SelfTest();
-
-  /* BM280 Variables */
-  int32_t temp_c;
-  uint32_t pressure_pa;
-
-  /* MPU9250 Variables */
-  float accel_x, accel_y, accel_z;
-  float gyro_x, gyro_y, gyro_z;
-  float temp_raw;
-
-  uint32_t BMP_last_transmit_time = 0;
-  uint32_t MPU_last_transmit_time =0;
-  char BMP_data[300];
-  char mpu_data[300];
+    /* Kick off initial measurement */
+    MLX90393_StartMeasurement();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -136,61 +127,30 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  handle_system_state();
-	  handle_system_health();
+	  if (mlx_data_ready)
+	      {
+	          mlx_data_ready = 0;
 
-	  /* Read temperature and pressure data from BMP280 sensor */
-	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
-	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
-	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
+	          if (MLX90393_ReadMeasurement(&sensor_data.mag_raw_x,
+	                                       &sensor_data.mag_raw_y,
+	                                       &sensor_data.mag_raw_z) == HAL_OK)
+	          {
+	              /* Convert Raw Counts -> uT with Offsets */
+	              MLX90393_ConvertToMicroTesla(sensor_data.mag_raw_x,
+	                                           sensor_data.mag_raw_y,
+	                                           sensor_data.mag_raw_z,
+	                                           &sensor_offsets,
+	                                           &mag_uT);
 
-	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
-			  "\r\n BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu \r\n",
-	          temp_c / 100,
-	          temp_c % 100,
-	          pressure_pa,
-			  sensor_data.temperature_raw,
-			  sensor_data.pressure_raw);
+	              printf("Mag uT | X: %.2f uT | Y: %.2f uT | Z: %.2f uT\r\n",
+	                     mag_uT.x_uT,
+	                     mag_uT.y_uT,
+	                     mag_uT.z_uT);
+	          }
 
-	  if(HAL_GetTick() - BMP_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
-		  BMP_last_transmit_time = HAL_GetTick();
-	  }
-
-	  /* Read IMU data from MPU9250 sensor */
-
-	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
-			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z,
-			  &sensor_data.temp_raw);
-
-	  accel_x = sensor_data.accel_raw_x/16384.0f;
-	  accel_y = sensor_data.accel_raw_y/16384.0f;
-	  accel_z = sensor_data.accel_raw_z/16384.0f;
-	  gyro_x = sensor_data.gyro_raw_x/131.0f;
-	  gyro_y = sensor_data.gyro_raw_y/131.0f;
-	  gyro_z = sensor_data.gyro_raw_z/131.0f;
-	  temp_raw = (sensor_data.temp_raw/333.87) + 21; // Convert raw temperature to degrees Celsius
-
-	  sprintf(mpu_data, "\r\n Accel_raw X: %d, Accel_raw Y: %d, Accel_raw Z: %d,"
-	          "\r\n Gyro_raw X: %d, Gyro_raw Y: %d, Gyro_raw Z: %d,"
-	          " \r\n Temp_raw: %d,"
-	          "\r\n Accel X: %.2f, Accel Y: %.2f, Accel Z: %.2f,"
-	          " \r\n Gyro X: %.2f, Gyro Y: %.2f, Gyro Z: %.2f,"
-	          " \r\n Temp: %.2f C\r\n",
-			  sensor_data.accel_raw_x, sensor_data.accel_raw_y, sensor_data.accel_raw_z,
-			  sensor_data.gyro_raw_x, sensor_data.gyro_raw_y, sensor_data.gyro_raw_z,
-			  sensor_data.temp_raw,
-			  accel_x, accel_y, accel_z,
-			  gyro_x, gyro_y, gyro_z,
-			  temp_raw);
-
-	  if(HAL_GetTick() - MPU_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-	  	  MPU_last_transmit_time = HAL_GetTick();
-	  }
-
+	          /* Trigger next conversion */
+	          MLX90393_StartMeasurement();
+	      }
   }
   /* USER CODE END 3 */
 }
@@ -243,7 +203,13 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == MLX_INT_Pin) // Ensure this matches your CubeMX user label
+    {
+        mlx_data_ready = 1;
+    }
+}
 /* USER CODE END 4 */
 
 /**
@@ -260,6 +226,7 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
