@@ -26,7 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "MLX90393.h"
 #include "sensor_data.h"
-#include "stdio.h"
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -48,16 +48,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile uint8_t mlx_data_ready = 0;
-
-/* Offsets derived from rotating the sensor 360 degrees: (Max + Min) / 2 */
-MLX90393_Offsets_t sensor_offsets = {
-    .x_offset = 0,
-    .y_offset = 0,
-    .z_offset = 0
-};
-
-MLX90393_CalibratedData_t mag_uT;
 
 /* USER CODE END PV */
 
@@ -105,19 +95,38 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
   MX_USART2_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  printf("\r\n--- MLX90393 Calibrated uT Readings ---\r\n");
+  printf("\r\n--- MLX90393 I2C Test ---\r\n");
 
-    MLX90393_Reset();
-    if (MLX90393_Configure() == HAL_OK)
-    {
-        printf("Sensor Configured Successfully.\r\n");
-    }
+  if (MLX90393_I2C_Test() == HAL_OK)
+  {
+      printf("MLX90393 I2C: OK\r\n");
+  }
+  else
+  {
+      printf("MLX90393 I2C: FAILED\r\n");
+  }
 
-    /* Kick off initial measurement */
-    MLX90393_StartMeasurement();
+
+  uint16_t conf0;
+
+  printf("\r\n--- MLX90393 Register Test ---\r\n");
+
+  if (MLX90393_ReadRegister(
+          MLX90393_REG_CONF0,
+          &conf0) == HAL_OK)
+  {
+      printf("CONF0: 0x%04X\r\n", conf0);
+  }
+  else
+  {
+      printf("CONF0 READ FAILED\r\n");
+  }
+
+
+  printf("\r\n--- MLX90393 Raw Magnetometer Test ---\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -127,30 +136,33 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if (mlx_data_ready)
-	      {
-	          mlx_data_ready = 0;
+	    if (MLX90393_StartMeasurement() == HAL_OK)
+	    {
+	        HAL_Delay(10);
 
-	          if (MLX90393_ReadMeasurement(&sensor_data.mag_raw_x,
-	                                       &sensor_data.mag_raw_y,
-	                                       &sensor_data.mag_raw_z) == HAL_OK)
-	          {
-	              /* Convert Raw Counts -> uT with Offsets */
-	              MLX90393_ConvertToMicroTesla(sensor_data.mag_raw_x,
-	                                           sensor_data.mag_raw_y,
-	                                           sensor_data.mag_raw_z,
-	                                           &sensor_offsets,
-	                                           &mag_uT);
+	        if (MLX90393_ReadMeasurement(
+	                &sensor_data.mag_raw_x,
+	                &sensor_data.mag_raw_y,
+	                &sensor_data.mag_raw_z) == HAL_OK)
+	        {
+	            printf(
+	                "Mag Raw X: %d | Y: %d | Z: %d\r\n",
+	                sensor_data.mag_raw_x,
+	                sensor_data.mag_raw_y,
+	                sensor_data.mag_raw_z
+	            );
+	        }
+	        else
+	        {
+	            printf("Mag Read FAILED\r\n");
+	        }
+	    }
+	    else
+	    {
+	        printf("Mag Start FAILED\r\n");
+	    }
 
-	              printf("Mag uT | X: %.2f uT | Y: %.2f uT | Z: %.2f uT\r\n",
-	                     mag_uT.x_uT,
-	                     mag_uT.y_uT,
-	                     mag_uT.z_uT);
-	          }
-
-	          /* Trigger next conversion */
-	          MLX90393_StartMeasurement();
-	      }
+	    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
@@ -203,13 +215,6 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-    if (GPIO_Pin == MLX_INT_Pin) // Ensure this matches your CubeMX user label
-    {
-        mlx_data_ready = 1;
-    }
-}
 /* USER CODE END 4 */
 
 /**
@@ -226,7 +231,6 @@ void Error_Handler(void)
   }
   /* USER CODE END Error_Handler_Debug */
 }
-
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
