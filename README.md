@@ -82,7 +82,7 @@ Both sensors' raw + processed values are logged out over UART (`USART2`) once pe
 - [x] Manual debug-button-driven system/health state machines
 - [x] LED-based health/state indication
 - [x] UART debug output of live sensor data
-- [ ] Standalone magnetometer integration (yaw correction)
+- [x] Standalone magnetometer integration (yaw correction)
 - [ ] GPS (NEO-6M) driver + NMEA parsing
 - [ ] microSD/FatFS telemetry logging
 - [ ] OLED status display
