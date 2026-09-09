@@ -32,6 +32,7 @@
 #include "led.h"
 #include "BMP280.h"
 #include "MPU9250.h"
+#include "MLX90393.h"
 #include "sensor_data.h"
 #include "string.h"
 #include "stdio.h"
@@ -113,6 +114,7 @@ int main(void)
 
   BMP280_SelfTest();
   MPU9250_SelfTest();
+  MLX90393_SelfTest();
 
   /* BM280 Variables */
   int32_t temp_c;
@@ -125,8 +127,11 @@ int main(void)
 
   uint32_t BMP_last_transmit_time = 0;
   uint32_t MPU_last_transmit_time =0;
+  uint32_t MLX_last_transmit_time =0;
+
   char BMP_data[300];
   char mpu_data[300];
+  char mlx_data[300];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -190,6 +195,29 @@ int main(void)
 	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
 	  	  MPU_last_transmit_time = HAL_GetTick();
 	  }
+
+	  /* Read magnetometer data from MLX90393 sensor */
+
+	  MLX90393_ReadMeasurement(&sensor_data.mag_raw_x, &sensor_data.mag_raw_y, &sensor_data.mag_raw_z);
+
+	  sprintf(mlx_data, "\r\n Mag_raw X: %d, Mag_raw Y: %d, Mag_raw Z: %d\r\n",
+			  sensor_data.mag_raw_x, sensor_data.mag_raw_y, sensor_data.mag_raw_z);
+
+	  MLX90393_RawTo_uT(&sensor_data.mag_raw_x, &sensor_data.mag_raw_y, &sensor_data.mag_raw_z,
+			  &sensor_data.mag_x_uT,
+			  &sensor_data.mag_y_uT,
+			  &sensor_data.mag_z_uT);
+
+	  sprintf(mlx_data + strlen(mlx_data), "Mag X: %.2f uT, Mag Y: %.2f uT, Mag Z: %.2f uT\r\n",
+			  sensor_data.mag_x_uT, sensor_data.mag_y_uT, sensor_data.mag_z_uT);
+
+	  if(HAL_GetTick() - MLX_last_transmit_time >= 1000) // Transmit every 1 second
+	  {
+		  HAL_UART_Transmit(&huart2, (uint8_t *)mlx_data, strlen(mlx_data) , HAL_MAX_DELAY);
+		  MLX_last_transmit_time = HAL_GetTick();
+	  }
+
+
 
   }
   /* USER CODE END 3 */

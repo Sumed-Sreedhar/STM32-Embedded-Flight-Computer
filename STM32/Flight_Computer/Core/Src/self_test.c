@@ -9,6 +9,7 @@
 #include "system_health.h"
 #include "BMP280.h"
 #include "MPU9250.h"
+#include "MLX90393.h"
 #include "sensor_data.h"
 #include "main.h"
 
@@ -75,6 +76,30 @@ void MPU9250_SelfTest(void)
 	}
 
 	if (MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z, &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z, &sensor_data.temp_raw) != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	current_health_state = NORMAL;
+}
+
+void MLX90393_SelfTest(void)
+{
+
+	if (MLX90393_I2C_Test() != HAL_OK)
+	{
+	    current_health_state = CRITICAL_FAULT;
+	    return;
+	}
+
+	if (MLX90393_Configure() != HAL_OK)
+	{
+	    current_health_state = FAULT;
+	    return;
+	}
+
+	if (MLX90393_StartMeasurement() != HAL_OK)
 	{
 	    current_health_state = FAULT;
 	    return;

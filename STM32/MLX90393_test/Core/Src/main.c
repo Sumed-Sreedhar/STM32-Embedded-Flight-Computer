@@ -98,6 +98,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
   printf("\r\n--- MLX90393 I2C Test ---\r\n");
 
   if (MLX90393_I2C_Test() == HAL_OK)
@@ -109,20 +110,70 @@ int main(void)
       printf("MLX90393 I2C: FAILED\r\n");
   }
 
+  printf("\r\n--- MLX90393 Configure Test ---\r\n");
 
+  /* CONF0 should already be the desired value.
+   * We do NOT write CONF0.
+   */
   uint16_t conf0;
+  uint16_t conf1;
+  uint16_t conf2;
+  uint16_t conf3;
 
-  printf("\r\n--- MLX90393 Register Test ---\r\n");
+  /* Read current configuration */
+  MLX90393_ReadRegister(MLX90393_REG_CONF0, &conf0);
+  MLX90393_ReadRegister(MLX90393_REG_CONF1, &conf1);
+  MLX90393_ReadRegister(MLX90393_REG_CONF2, &conf2);
+  MLX90393_ReadRegister(MLX90393_REG_CONF3, &conf3);
 
-  if (MLX90393_ReadRegister(
-          MLX90393_REG_CONF0,
-          &conf0) == HAL_OK)
+  printf("Before configuration:\r\n");
+  printf("CONF0: 0x%04X\r\n", conf0);
+  printf("CONF1: 0x%04X\r\n", conf1);
+  printf("CONF2: 0x%04X\r\n", conf2);
+  printf("CONF3: 0x%04X\r\n", conf3);
+
+
+  /* CONF0 = 0x007C is already correct.
+   * Only change CONF2.
+   */
+  printf("\r\nWriting CONF2 = 0x000A...\r\n");
+
+  if (MLX90393_WriteRegister(
+          MLX90393_REG_CONF2,
+          0x000A) == HAL_OK)
   {
-      printf("CONF0: 0x%04X\r\n", conf0);
+      printf("Write CONF2: OK\r\n");
   }
   else
   {
-      printf("CONF0 READ FAILED\r\n");
+      printf("Write CONF2: FAILED\r\n");
+  }
+
+
+  /* Read configuration back */
+  MLX90393_ReadRegister(MLX90393_REG_CONF0, &conf0);
+  MLX90393_ReadRegister(MLX90393_REG_CONF1, &conf1);
+  MLX90393_ReadRegister(MLX90393_REG_CONF2, &conf2);
+  MLX90393_ReadRegister(MLX90393_REG_CONF3, &conf3);
+
+  printf("\r\nAfter configuration:\r\n");
+  printf("CONF0: 0x%04X\r\n", conf0);
+  printf("CONF1: 0x%04X\r\n", conf1);
+  printf("CONF2: 0x%04X\r\n", conf2);
+  printf("CONF3: 0x%04X\r\n", conf3);
+
+
+  /* Verify expected values */
+  if ((conf0 == 0x007C) &&
+      (conf1 == 0x0000) &&
+      (conf2 == 0x000A) &&
+      (conf3 == 0x5644))
+  {
+      printf("\r\nMLX90393 configuration VERIFIED\r\n");
+  }
+  else
+  {
+      printf("\r\nMLX90393 configuration MISMATCH\r\n");
   }
 
 
@@ -150,6 +201,22 @@ int main(void)
 	                sensor_data.mag_raw_x,
 	                sensor_data.mag_raw_y,
 	                sensor_data.mag_raw_z
+	            );
+
+	     	   MLX90393_RawTo_uT(
+	                &sensor_data.mag_raw_x,
+	                &sensor_data.mag_raw_y,
+	                &sensor_data.mag_raw_z,
+	                &sensor_data.mag_x_uT,
+	                &sensor_data.mag_y_uT,
+	                &sensor_data.mag_z_uT
+	            );
+
+	            printf(
+	                "Mag: X = %.2f uT | Y = %.2f uT | Z = %.2f uT\r\n",
+	                sensor_data.mag_x_uT,
+	                sensor_data.mag_y_uT,
+	                sensor_data.mag_z_uT
 	            );
 	        }
 	        else

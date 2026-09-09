@@ -28,6 +28,10 @@ typedef struct
     int16_t mag_raw_y;
     int16_t mag_raw_z;
 
+    float mag_x_uT;
+    float mag_y_uT;
+    float mag_z_uT;
+
 } sensor_data_t;
 
 extern sensor_data_t sensor_data;
