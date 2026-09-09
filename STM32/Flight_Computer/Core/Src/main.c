@@ -198,6 +198,7 @@ int main(void)
 
 	  /* Read magnetometer data from MLX90393 sensor */
 
+	  MLX90393_StartMeasurement();
 	  MLX90393_ReadMeasurement(&sensor_data.mag_raw_x, &sensor_data.mag_raw_y, &sensor_data.mag_raw_z);
 
 	  sprintf(mlx_data, "\r\n Mag_raw X: %d, Mag_raw Y: %d, Mag_raw Z: %d\r\n",
