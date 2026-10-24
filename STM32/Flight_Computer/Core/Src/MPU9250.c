@@ -83,11 +83,6 @@ HAL_StatusTypeDef MPU9250_Who_AM_I(uint8_t *chip_id)
 		return status;
 	}
 
-	if(*chip_id != 0x71)
-	{
-		return HAL_ERROR;
-	}
-
 	return status;
 }
 

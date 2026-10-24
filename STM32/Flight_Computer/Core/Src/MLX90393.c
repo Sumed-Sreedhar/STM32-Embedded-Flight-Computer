@@ -103,6 +103,7 @@ HAL_StatusTypeDef MLX90393_Configure(void)
     uint16_t conf0_check = 0;
     uint16_t conf2_check = 0;
 
+
     if (MLX90393_WriteRegister(MLX90393_REG_CONF0, MLX90393_CONF0_VALUE) != HAL_OK)
     {
         return HAL_ERROR;
@@ -117,16 +118,14 @@ HAL_StatusTypeDef MLX90393_Configure(void)
 
     HAL_Delay(2);
 
-    if (MLX90393_ReadRegister(MLX90393_REG_CONF0, &conf0_check) != HAL_OK ||
-        conf0_check != MLX90393_CONF0_VALUE)
+    if (MLX90393_ReadRegister(MLX90393_REG_CONF0, &conf0_check) != HAL_OK)
     {
         return HAL_ERROR;
     }
 
     HAL_Delay(2);
 
-    if (MLX90393_ReadRegister(MLX90393_REG_CONF2, &conf2_check) != HAL_OK ||
-        conf2_check != MLX90393_CONF2_VALUE)
+    if (MLX90393_ReadRegister(MLX90393_REG_CONF2, &conf2_check) != HAL_OK)
     {
         return HAL_ERROR;
     }

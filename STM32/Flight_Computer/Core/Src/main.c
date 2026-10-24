@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "i2c.h"
 #include "spi.h"
 #include "usart.h"
@@ -62,6 +63,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -112,27 +114,67 @@ int main(void)
 
   current_system_state = SELF_TEST;
 
-  BMP280_SelfTest();
-  MPU9250_SelfTest();
-  MLX90393_SelfTest();
+  /* Self Test */
 
-  /* BM280 Variables */
-  int32_t temp_c;
-  uint32_t pressure_pa;
+  SelfTest();
 
-  /* MPU9250 Variables */
-  float accel_x, accel_y, accel_z;
-  float gyro_x, gyro_y, gyro_z;
-  float temp_raw;
+  extern volatile BMP_TestResult_t bmp_test_result;
+  extern volatile MPU_TestResult_t mpu_test_result;
+  extern volatile MLX_TestResult_t mlx_test_result;
+  char selftest_data[500];
 
-  uint32_t BMP_last_transmit_time = 0;
-  uint32_t MPU_last_transmit_time =0;
-  uint32_t MLX_last_transmit_time =0;
+  sprintf(selftest_data,
+          "\r\n"
+          "========== SELF TEST ==========\r\n"
+          "\r\n"
+          "BMP280  : %s\r\n"
+          "MPU9250 : %s\r\n"
+          "MLX90393: %s\r\n"
+          "\r\n"
+          "SYSTEM HEALTH: %s\r\n"
+          "===============================\r\n",
 
-  char BMP_data[300];
-  char mpu_data[300];
-  char mlx_data[300];
+          (bmp_test_result == BMP_OK) ? "PASS" :
+          (bmp_test_result == BMP_READID_FAIL) ? "READ ID FAIL" :
+          (bmp_test_result == BMP_ID_FAIL) ? "ID FAIL" :
+          (bmp_test_result == BMP_INIT_FAIL) ? "INIT FAIL" :
+          (bmp_test_result == BMP_LOAD_FAIL) ? "CALIBRATION FAIL" :
+          (bmp_test_result == BMP_READ_FAIL) ? "DATA READ FAIL" :
+                                               "UNKNOWN",
+
+          (mpu_test_result == MPU_OK) ? "PASS" :
+          (mpu_test_result == MPU_READID_FAIL) ? "READ ID FAIL" :
+          (mpu_test_result == MPU_ID_FAIL) ? "ID FAIL" :
+          (mpu_test_result == MPU_INIT_FAIL) ? "INIT FAIL" :
+          (mpu_test_result == MPU_READ_FAIL) ? "DATA READ FAIL" :
+                                               "UNKNOWN",
+
+          (mlx_test_result == MLX_OK) ? "PASS" :
+          (mlx_test_result == MLX_I2C_FAIL) ? "I2C FAIL" :
+          (mlx_test_result == MLX_CONFIG_FAIL) ? "CONFIG FAIL" :
+                                                 "UNKNOWN",
+
+          (current_health_state == NORMAL) ? "NORMAL" :
+          (current_health_state == FAULT) ? "FAULT" :
+          (current_health_state == CRITICAL_FAULT) ? "CRITICAL FAULT" :
+                                                     "UNKNOWN"
+  );
+
+  HAL_UART_Transmit(&huart2,
+                    (uint8_t *)selftest_data,
+                    strlen(selftest_data),
+                    HAL_MAX_DELAY);
+
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -141,85 +183,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  handle_system_state();
-	  handle_system_health();
-
-	  /* Read temperature and pressure data from BMP280 sensor */
-	  BMP280_ReadRaw(&sensor_data.temperature_raw, &sensor_data.pressure_raw);
-	  temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
-	  pressure_pa = BMP280_CompensatePressure(sensor_data.pressure_raw)/256;
-
-	  sprintf(BMP_data, "\r\n BMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
-			  "\r\n BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu \r\n",
-	          temp_c / 100,
-	          temp_c % 100,
-	          pressure_pa,
-			  sensor_data.temperature_raw,
-			  sensor_data.pressure_raw);
-
-	  if(HAL_GetTick() - BMP_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)BMP_data, strlen(BMP_data) , HAL_MAX_DELAY);
-		  BMP_last_transmit_time = HAL_GetTick();
-	  }
-
-	  /* Read IMU data from MPU9250 sensor */
-
-	  MPU9250_ReadRaw(&sensor_data.accel_raw_x, &sensor_data.accel_raw_y, &sensor_data.accel_raw_z,
-			  &sensor_data.gyro_raw_x, &sensor_data.gyro_raw_y, &sensor_data.gyro_raw_z,
-			  &sensor_data.temp_raw);
-
-	  accel_x = sensor_data.accel_raw_x/16384.0f;
-	  accel_y = sensor_data.accel_raw_y/16384.0f;
-	  accel_z = sensor_data.accel_raw_z/16384.0f;
-	  gyro_x = sensor_data.gyro_raw_x/131.0f;
-	  gyro_y = sensor_data.gyro_raw_y/131.0f;
-	  gyro_z = sensor_data.gyro_raw_z/131.0f;
-	  temp_raw = (sensor_data.temp_raw/333.87) + 21; // Convert raw temperature to degrees Celsius
-
-	  sprintf(mpu_data, "\r\n Accel_raw X: %d, Accel_raw Y: %d, Accel_raw Z: %d,"
-	          "\r\n Gyro_raw X: %d, Gyro_raw Y: %d, Gyro_raw Z: %d,"
-	          " \r\n Temp_raw: %d,"
-	          "\r\n Accel X: %.2f, Accel Y: %.2f, Accel Z: %.2f,"
-	          " \r\n Gyro X: %.2f, Gyro Y: %.2f, Gyro Z: %.2f,"
-	          " \r\n Temp: %.2f C\r\n",
-			  sensor_data.accel_raw_x, sensor_data.accel_raw_y, sensor_data.accel_raw_z,
-			  sensor_data.gyro_raw_x, sensor_data.gyro_raw_y, sensor_data.gyro_raw_z,
-			  sensor_data.temp_raw,
-			  accel_x, accel_y, accel_z,
-			  gyro_x, gyro_y, gyro_z,
-			  temp_raw);
-
-	  if(HAL_GetTick() - MPU_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-	  	  HAL_UART_Transmit(&huart2, (uint8_t *)mpu_data, strlen(mpu_data) , HAL_MAX_DELAY);
-	  	  MPU_last_transmit_time = HAL_GetTick();
-	  }
-
-	  /* Read magnetometer data from MLX90393 sensor */
-
-	  MLX90393_StartMeasurement();
-	  MLX90393_ReadMeasurement(&sensor_data.mag_raw_x, &sensor_data.mag_raw_y, &sensor_data.mag_raw_z);
-
-	  sprintf(mlx_data, "\r\n Mag_raw X: %d, Mag_raw Y: %d, Mag_raw Z: %d\r\n",
-			  sensor_data.mag_raw_x, sensor_data.mag_raw_y, sensor_data.mag_raw_z);
-
-	  MLX90393_RawTo_uT(&sensor_data.mag_raw_x, &sensor_data.mag_raw_y, &sensor_data.mag_raw_z,
-			  &sensor_data.mag_x_uT,
-			  &sensor_data.mag_y_uT,
-			  &sensor_data.mag_z_uT);
-
-	  sprintf(mlx_data + strlen(mlx_data), "Mag X: %.2f uT, Mag Y: %.2f uT, Mag Z: %.2f uT\r\n",
-			  sensor_data.mag_x_uT, sensor_data.mag_y_uT, sensor_data.mag_z_uT);
-
-	  if(HAL_GetTick() - MLX_last_transmit_time >= 1000) // Transmit every 1 second
-	  {
-		  HAL_UART_Transmit(&huart2, (uint8_t *)mlx_data, strlen(mlx_data) , HAL_MAX_DELAY);
-		  MLX_last_transmit_time = HAL_GetTick();
-	  }
-
-
-
   }
   /* USER CODE END 3 */
 }

@@ -140,7 +140,6 @@ int main(void)
                       HAL_MAX_DELAY);
 
    BMP280_SelfTest();
-
    /* BM280 Variables */
     int32_t temp_c;
     uint32_t pressure_pa;
