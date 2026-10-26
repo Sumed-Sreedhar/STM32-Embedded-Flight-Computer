@@ -39,6 +39,25 @@ typedef struct
 
 } sensor_data_t;
 
+#define SENSOR_FRAME_IMU_VALID   (1U << 0)
+#define SENSOR_FRAME_BARO_VALID  (1U << 1)
+#define SENSOR_FRAME_MAG_VALID   (1U << 2)
+
+/* Latest sensor values and the tick of each sensor's last successful read. */
+typedef struct
+{
+	uint32_t imu_tick_ms;
+	uint32_t baro_tick_ms;
+	uint32_t mag_tick_ms;
+	uint8_t valid_mask;
+
+	float accel_g[3];
+	float gyro_dps[3];
+	float mag_uT[3];
+	float temperature_c;
+	float pressure_pa;
+} sensor_frame_t;
+
 extern sensor_data_t sensor_data;
 
 

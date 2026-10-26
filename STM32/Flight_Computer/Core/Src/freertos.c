@@ -56,6 +56,12 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+static osMessageQueueId_t sensorFrameQueue;
+
+/* Debugger-visible indicators that StateEstTask is receiving sensor frames. */
+static sensor_frame_t estimator_latest_frame;
+static volatile uint32_t estimator_frame_count;
+static volatile float estimator_dt_seconds;
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -138,7 +144,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+  sensorFrameQueue = osMessageQueueNew(1U, sizeof(sensor_frame_t), NULL);
+  if (sensorFrameQueue == NULL)
+  {
+    Error_Handler();
+  }
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -233,243 +243,138 @@ void StartDefaultTask(void *argument)
 void StartSensorTask(void *argument)
 {
   /* USER CODE BEGIN StartSensorTask */
+    sensor_frame_t frame = {0};
+    sensor_frame_t discarded_frame;
+    TickType_t last_wake = xTaskGetTickCount();
 
-    int32_t temp_centi_c;
-    uint32_t pressure_q24_8;
-    float accel_x, accel_y, accel_z;
-    float gyro_x, gyro_y, gyro_z;
-    float mpu_temperature_c;
+    uint32_t now;
+    uint32_t baro_last_tick = HAL_GetTick() - 40U;
+    uint32_t mag_last_start_tick = HAL_GetTick() - 20U;
+    uint32_t mag_start_tick = 0U;
+    uint8_t mag_pending = 0U;
+    HAL_StatusTypeDef status;
 
-    uint32_t bmp_last_transmit_time = HAL_GetTick();
-    uint32_t mpu_last_transmit_time = HAL_GetTick();
-    uint32_t mlx_last_transmit_time = HAL_GetTick();
-    uint32_t resource_report_start = HAL_GetTick();
-    uint8_t resources_reported = 0U;
+    (void)argument;
 
-    char bmp_data[180];
-    char mpu_data[240];
-    char mlx_data[160];
-    char resource_data[220];
+    for (;;)
+    {
+        /* IMU: sample once per 10 ms cycle. */
+        status = MPU9250_ReadRaw(
+            &sensor_data.accel_raw_x,
+            &sensor_data.accel_raw_y,
+            &sensor_data.accel_raw_z,
+            &sensor_data.gyro_raw_x,
+            &sensor_data.gyro_raw_y,
+            &sensor_data.gyro_raw_z,
+            &sensor_data.temp_raw);
 
-  /* Infinite loop */
-  for(;;)
-  {
-      HAL_StatusTypeDef status;
-       uint32_t now;
-       int length;
+        SystemHealth_ReportSensor(SENSOR_MPU9250, status);
 
-       /* BMP280 */
-       status = BMP280_ReadRaw(
-           &sensor_data.temperature_raw,
-           &sensor_data.pressure_raw);
+        if (status == HAL_OK)
+        {
+            frame.accel_g[0] = (float)sensor_data.accel_raw_x / 16384.0f;
+            frame.accel_g[1] = (float)sensor_data.accel_raw_y / 16384.0f;
+            frame.accel_g[2] = (float)sensor_data.accel_raw_z / 16384.0f;
 
-       SystemHealth_ReportSensor(SENSOR_BMP280, status);
+            frame.gyro_dps[0] = (float)sensor_data.gyro_raw_x / 131.0f;
+            frame.gyro_dps[1] = (float)sensor_data.gyro_raw_y / 131.0f;
+            frame.gyro_dps[2] = (float)sensor_data.gyro_raw_z / 131.0f;
 
-       if (status == HAL_OK)
-       {
-           temp_centi_c =
-               BMP280_CompensateTemp(sensor_data.temperature_raw);
+            frame.imu_tick_ms = HAL_GetTick();
+            frame.valid_mask |= SENSOR_FRAME_IMU_VALID;
+        }
 
-           pressure_q24_8 =
-               BMP280_CompensatePressure(sensor_data.pressure_raw);
+        /* BMP280: sample at 25 Hz. */
+        now = HAL_GetTick();
+        if ((uint32_t)(now - baro_last_tick) >= 40U)
+        {
+            int32_t temperature_centi_c;
+            uint32_t pressure_q24_8;
 
-           sensor_data.temperature = (float)temp_centi_c / 100.0f;
-           sensor_data.pressure = (float)pressure_q24_8 / 256.0f;
+            baro_last_tick = now;
+            status = BMP280_ReadRaw(
+                &sensor_data.temperature_raw,
+                &sensor_data.pressure_raw);
 
-           now = HAL_GetTick();
-           if ((uint32_t)(now - bmp_last_transmit_time) >= 1000U)
-           {
-               length = snprintf(
-                   bmp_data,
-                   sizeof(bmp_data),
-                   "\r\nBMP280 Temperature: %.2f C, Pressure: %.2f Pa\r\n"
-                   "BMP280 raw temp: %ld, raw pressure: %ld\r\n",
-                   (double)sensor_data.temperature,
-                   (double)sensor_data.pressure,
-                   (long)sensor_data.temperature_raw,
-                   (long)sensor_data.pressure_raw);
+            SystemHealth_ReportSensor(SENSOR_BMP280, status);
 
-               if (length > 0)
-               {
-                   if ((size_t)length >= sizeof(bmp_data))
-                   {
-                       length = (int)sizeof(bmp_data) - 1;
-                   }
+            if (status == HAL_OK)
+            {
+                temperature_centi_c =
+                    BMP280_CompensateTemp(sensor_data.temperature_raw);
+                pressure_q24_8 =
+                    BMP280_CompensatePressure(sensor_data.pressure_raw);
 
-                   HAL_UART_Transmit(
-                       &huart2,
-                       (uint8_t *)bmp_data,
-                       (uint16_t)length,
-                       HAL_MAX_DELAY);
-               }
+                frame.temperature_c = (float)temperature_centi_c / 100.0f;
+                frame.pressure_pa = (float)pressure_q24_8 / 256.0f;
+                sensor_data.temperature = frame.temperature_c;
+                sensor_data.pressure = frame.pressure_pa;
 
-               bmp_last_transmit_time = now;
-           }
-       }
+                frame.baro_tick_ms = HAL_GetTick();
+                frame.valid_mask |= SENSOR_FRAME_BARO_VALID;
+            }
+        }
 
-       /* MPU9250 */
-       status = MPU9250_ReadRaw(
-           &sensor_data.accel_raw_x,
-           &sensor_data.accel_raw_y,
-           &sensor_data.accel_raw_z,
-           &sensor_data.gyro_raw_x,
-           &sensor_data.gyro_raw_y,
-           &sensor_data.gyro_raw_z,
-           &sensor_data.temp_raw);
+        /* Finish an MLX90393 conversion without blocking the IMU schedule. */
+        now = HAL_GetTick();
+        if ((mag_pending != 0U) &&
+            ((uint32_t)(now - mag_start_tick) >= 20U))
+        {
+            status = MLX90393_ReadMeasurement(
+                &sensor_data.mag_raw_x,
+                &sensor_data.mag_raw_y,
+                &sensor_data.mag_raw_z);
 
-       SystemHealth_ReportSensor(SENSOR_MPU9250, status);
+            SystemHealth_ReportSensor(SENSOR_MLX90393, status);
 
-       if (status == HAL_OK)
-       {
-           accel_x = (float)sensor_data.accel_raw_x / 16384.0f;
-           accel_y = (float)sensor_data.accel_raw_y / 16384.0f;
-           accel_z = (float)sensor_data.accel_raw_z / 16384.0f;
+            if (status == HAL_OK)
+            {
+                MLX90393_RawTo_uT(
+                    &sensor_data.mag_raw_x,
+                    &sensor_data.mag_raw_y,
+                    &sensor_data.mag_raw_z,
+                    &sensor_data.mag_x_uT,
+                    &sensor_data.mag_y_uT,
+                    &sensor_data.mag_z_uT);
 
-           gyro_x = (float)sensor_data.gyro_raw_x / 131.0f;
-           gyro_y = (float)sensor_data.gyro_raw_y / 131.0f;
-           gyro_z = (float)sensor_data.gyro_raw_z / 131.0f;
+                frame.mag_uT[0] = sensor_data.mag_x_uT;
+                frame.mag_uT[1] = sensor_data.mag_y_uT;
+                frame.mag_uT[2] = sensor_data.mag_z_uT;
+                frame.mag_tick_ms = HAL_GetTick();
+                frame.valid_mask |= SENSOR_FRAME_MAG_VALID;
+            }
 
-           mpu_temperature_c =
-               ((float)sensor_data.temp_raw / 333.87f) + 21.0f;
+            mag_pending = 0U;
+        }
 
-           now = HAL_GetTick();
-           if ((uint32_t)(now - mpu_last_transmit_time) >= 1000U)
-           {
-               length = snprintf(
-                   mpu_data,
-                   sizeof(mpu_data),
-                   "\r\nMPU raw accel: %d, %d, %d\r\n"
-                   "MPU raw gyro: %d, %d, %d\r\n"
-                   "MPU accel g: %.2f, %.2f, %.2f\r\n"
-                   "MPU gyro dps: %.2f, %.2f, %.2f\r\n"
-                   "MPU temperature: %.2f C\r\n",
-                   sensor_data.accel_raw_x,
-                   sensor_data.accel_raw_y,
-                   sensor_data.accel_raw_z,
-                   sensor_data.gyro_raw_x,
-                   sensor_data.gyro_raw_y,
-                   sensor_data.gyro_raw_z,
-                   (double)accel_x,
-                   (double)accel_y,
-                   (double)accel_z,
-                   (double)gyro_x,
-                   (double)gyro_y,
-                   (double)gyro_z,
-                   (double)mpu_temperature_c);
+        now = HAL_GetTick();
+        if ((mag_pending == 0U) &&
+            ((uint32_t)(now - mag_last_start_tick) >= 20U))
+        {
+            status = MLX90393_StartMeasurement();
+            mag_last_start_tick = now;
 
-               if (length > 0)
-               {
-                   if ((size_t)length >= sizeof(mpu_data))
-                   {
-                       length = (int)sizeof(mpu_data) - 1;
-                   }
+            if (status == HAL_OK)
+            {
+                mag_pending = 1U;
+                mag_start_tick = now;
+            }
+            else
+            {
+                SystemHealth_ReportSensor(SENSOR_MLX90393, status);
+            }
+        }
 
-                   HAL_UART_Transmit(
-                       &huart2,
-                       (uint8_t *)mpu_data,
-                       (uint16_t)length,
-                       HAL_MAX_DELAY);
-               }
+        /* Keep only the newest frame if StateEstTask falls behind. */
+        if (osMessageQueuePut(sensorFrameQueue, &frame, 0U, 0U) != osOK)
+        {
+            (void)osMessageQueueGet(
+                sensorFrameQueue, &discarded_frame, NULL, 0U);
+            (void)osMessageQueuePut(sensorFrameQueue, &frame, 0U, 0U);
+        }
 
-               mpu_last_transmit_time = now;
-           }
-       }
-
-       /* MLX90393 */
-       status = MLX90393_StartMeasurement();
-
-       if (status == HAL_OK)
-       {
-           osDelay(20U);
-
-           status = MLX90393_ReadMeasurement(
-               &sensor_data.mag_raw_x,
-               &sensor_data.mag_raw_y,
-               &sensor_data.mag_raw_z);
-       }
-
-       SystemHealth_ReportSensor(SENSOR_MLX90393, status);
-
-       if (status == HAL_OK)
-       {
-           MLX90393_RawTo_uT(
-               &sensor_data.mag_raw_x,
-               &sensor_data.mag_raw_y,
-               &sensor_data.mag_raw_z,
-               &sensor_data.mag_x_uT,
-               &sensor_data.mag_y_uT,
-               &sensor_data.mag_z_uT);
-
-           now = HAL_GetTick();
-           if ((uint32_t)(now - mlx_last_transmit_time) >= 1000U)
-           {
-               length = snprintf(
-                   mlx_data,
-                   sizeof(mlx_data),
-                   "\r\nMLX raw: %d, %d, %d\r\n"
-                   "MLX magnetic field: %.2f, %.2f, %.2f uT\r\n",
-                   sensor_data.mag_raw_x,
-                   sensor_data.mag_raw_y,
-                   sensor_data.mag_raw_z,
-                   (double)sensor_data.mag_x_uT,
-                   (double)sensor_data.mag_y_uT,
-                   (double)sensor_data.mag_z_uT);
-
-               if (length > 0)
-               {
-                   if ((size_t)length >= sizeof(mlx_data))
-                   {
-                       length = (int)sizeof(mlx_data) - 1;
-                   }
-
-                   HAL_UART_Transmit(
-                       &huart2,
-                       (uint8_t *)mlx_data,
-                       (uint16_t)length,
-                       HAL_MAX_DELAY);
-               }
-
-               mlx_last_transmit_time = now;
-           }
-       }
-
-       now = HAL_GetTick();
-       if ((resources_reported == 0U) &&
-           ((uint32_t)(now - resource_report_start) >= 2000U))
-       {
-           length = snprintf(
-               resource_data,
-               sizeof(resource_data),
-               "\r\nRTOS free heap: %lu bytes\r\n"
-               "Stack headroom (words): Sensor=%lu State=%lu GPS=%lu "
-               "Fault=%lu Logger=%lu Default=%lu\r\n",
-               (unsigned long)xPortGetFreeHeapSize(),
-               (unsigned long)uxTaskGetStackHighWaterMark(SensorTaskHandle),
-               (unsigned long)uxTaskGetStackHighWaterMark(StateEstTaskHandle),
-               (unsigned long)uxTaskGetStackHighWaterMark(GPSTaskHandle),
-               (unsigned long)uxTaskGetStackHighWaterMark(FaultManageTaskHandle),
-               (unsigned long)uxTaskGetStackHighWaterMark(LoggerTaskHandle),
-               (unsigned long)uxTaskGetStackHighWaterMark(defaultTaskHandle));
-
-           if (length > 0)
-           {
-               if ((size_t)length >= sizeof(resource_data))
-               {
-                   length = (int)sizeof(resource_data) - 1;
-               }
-
-               HAL_UART_Transmit(
-                   &huart2,
-                   (uint8_t *)resource_data,
-                   (uint16_t)length,
-                   HAL_MAX_DELAY);
-           }
-
-           resources_reported = 1U;
-       }
-
-       osDelay(1U);
-  }
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10U));
+    }
   /* USER CODE END StartSensorTask */
 }
 
@@ -483,11 +388,37 @@ void StartSensorTask(void *argument)
 void StartStateEstTask(void *argument)
 {
   /* USER CODE BEGIN StartStateEstTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+    sensor_frame_t frame;
+    uint32_t previous_imu_tick_ms = 0U;
+
+    (void)argument;
+
+    for (;;)
+    {
+        if (osMessageQueueGet(
+                sensorFrameQueue,
+                &frame,
+                NULL,
+                osWaitForever) == osOK)
+        {
+            uint32_t now = HAL_GetTick();
+
+            if (((frame.valid_mask & SENSOR_FRAME_IMU_VALID) != 0U) &&
+                ((uint32_t)(now - frame.imu_tick_ms) <= 100U))
+            {
+                if (previous_imu_tick_ms != 0U)
+                {
+                    uint32_t elapsed_ms =
+                        frame.imu_tick_ms - previous_imu_tick_ms;
+                    estimator_dt_seconds = (float)elapsed_ms / 1000.0f;
+                }
+
+                previous_imu_tick_ms = frame.imu_tick_ms;
+                estimator_latest_frame = frame;
+                estimator_frame_count++;
+            }
+        }
+    }
   /* USER CODE END StartStateEstTask */
 }
 
