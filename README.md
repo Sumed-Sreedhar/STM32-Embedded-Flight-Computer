@@ -147,8 +147,8 @@ Task creation return values are checked, and free heap is verified after task cr
 - [x] BMP280, MPU9250, and MLX90393 drivers
 - [x] Startup self-test
 - [x] Runtime health monitoring and LED indication
-- [ ] Bench-validate runtime health and task-memory reporting
-- [ ] Sensor snapshot publication from `SensorTask` to `StateEstTask`
+- [x] Bench-validate runtime health and task-memory reporting
+- [x] Sensor snapshot publication from `SensorTask` to `StateEstTask`
 - [ ] 9-DoF Mahony filter (MPU9250 + MLX90393)
 - [ ] NEO-6M UART reception, NMEA parsing, fix validity, and GPS-loss detection
 - [ ] MicroSD / FatFS logging through `LoggerTask`
