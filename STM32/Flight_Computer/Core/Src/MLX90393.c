@@ -93,7 +93,7 @@ HAL_StatusTypeDef MLX90393_Reset(void)
         return HAL_ERROR;
     }
 
-    HAL_Delay(5); /* >= T_POR (max 1.5ms per datasheet); margin included */
+    HAL_Delay(5);
 
     return HAL_OK;
 }
@@ -136,30 +136,40 @@ HAL_StatusTypeDef MLX90393_Configure(void)
 HAL_StatusTypeDef MLX90393_StartMeasurement(void)
 {
     uint8_t cmd = MLX90393_SM_XYZ;
-    uint8_t status_byte = 0;
+    uint8_t status_byte = 0U;
+    HAL_StatusTypeDef status;
 
-    if (HAL_I2C_Master_Transmit(
-            &hi2c1,
-            MLX90393_I2C_ADDR,
-            &cmd,
-            1,
-            MLX90393_TIMEOUT) != HAL_OK)
+    status = HAL_I2C_Master_Transmit(
+        &hi2c1,
+        MLX90393_I2C_ADDR,
+        &cmd,
+        1U,
+        MLX90393_TIMEOUT);
+
+    if (status != HAL_OK)
+    {
+        return status;
+    }
+
+    status = HAL_I2C_Master_Receive(
+        &hi2c1,
+        MLX90393_I2C_ADDR,
+        &status_byte,
+        1U,
+        MLX90393_TIMEOUT);
+
+    if (status != HAL_OK)
+    {
+        return status;
+    }
+
+    if ((status_byte & 0x10U) != 0U)
     {
         return HAL_ERROR;
     }
 
-
-    HAL_I2C_Master_Receive(
-        &hi2c1,
-        MLX90393_I2C_ADDR,
-        &status_byte,
-        1,
-        MLX90393_TIMEOUT
-    );
-
     return HAL_OK;
 }
-
 
 HAL_StatusTypeDef MLX90393_ReadMeasurement(
     int16_t *x,

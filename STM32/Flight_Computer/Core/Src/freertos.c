@@ -33,6 +33,7 @@
 #include "MLX90393.h"
 #include "sensor_data.h"
 #include "usart.h"
+#include "button.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -61,7 +62,7 @@
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for SensorTask */
@@ -142,23 +143,57 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+	defaultTaskHandle = osThreadNew(
+	    StartDefaultTask, NULL, &defaultTask_attributes);
+	if (defaultTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
   /* creation of SensorTask */
-  SensorTaskHandle = osThreadNew(StartSensorTask, NULL, &SensorTask_attributes);
+	SensorTaskHandle = osThreadNew(
+	    StartSensorTask, NULL, &SensorTask_attributes);
+	if (SensorTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
   /* creation of StateEstTask */
-  StateEstTaskHandle = osThreadNew(StartStateEstTask, NULL, &StateEstTask_attributes);
+	StateEstTaskHandle = osThreadNew(
+	    StartStateEstTask, NULL, &StateEstTask_attributes);
+	if (StateEstTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
   /* creation of GPSTask */
-  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
+	GPSTaskHandle = osThreadNew(
+	    StartGPSTask, NULL, &GPSTask_attributes);
+	if (GPSTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
   /* creation of FaultManageTask */
-  FaultManageTaskHandle = osThreadNew(StartFaultManageTask, NULL, &FaultManageTask_attributes);
+	FaultManageTaskHandle = osThreadNew(
+	    StartFaultManageTask, NULL, &FaultManageTask_attributes);
+	if (FaultManageTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
   /* creation of LoggerTask */
-  LoggerTaskHandle = osThreadNew(StartLoggerTask, NULL, &LoggerTask_attributes);
+	LoggerTaskHandle = osThreadNew(
+	    StartLoggerTask, NULL, &LoggerTask_attributes);
+	if (LoggerTaskHandle == NULL)
+	{
+	    Error_Handler();
+	}
 
+	if (xPortGetFreeHeapSize() < 256U)
+	{
+	    Error_Handler();
+	}
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -199,139 +234,241 @@ void StartSensorTask(void *argument)
 {
   /* USER CODE BEGIN StartSensorTask */
 
-    int32_t temp_c;
-    uint32_t pressure_pa;
-
+    int32_t temp_centi_c;
+    uint32_t pressure_q24_8;
     float accel_x, accel_y, accel_z;
     float gyro_x, gyro_y, gyro_z;
-    float temp_raw;
+    float mpu_temperature_c;
 
-    uint32_t BMP_last_transmit_time = 0;
-    uint32_t MPU_last_transmit_time = 0;
-    uint32_t MLX_last_transmit_time = 0;
+    uint32_t bmp_last_transmit_time = HAL_GetTick();
+    uint32_t mpu_last_transmit_time = HAL_GetTick();
+    uint32_t mlx_last_transmit_time = HAL_GetTick();
+    uint32_t resource_report_start = HAL_GetTick();
+    uint8_t resources_reported = 0U;
 
-    char BMP_data[300];
-    char mpu_data[300];
-    char mlx_data[300];
-
+    char bmp_data[180];
+    char mpu_data[240];
+    char mlx_data[160];
+    char resource_data[220];
 
   /* Infinite loop */
   for(;;)
   {
-      /* Read BMP280 */
-      BMP280_ReadRaw(&sensor_data.temperature_raw,
-                     &sensor_data.pressure_raw);
+      HAL_StatusTypeDef status;
+       uint32_t now;
+       int length;
 
-      temp_c = BMP280_CompensateTemp(sensor_data.temperature_raw);
+       /* BMP280 */
+       status = BMP280_ReadRaw(
+           &sensor_data.temperature_raw,
+           &sensor_data.pressure_raw);
 
-      pressure_pa =
-          BMP280_CompensatePressure(sensor_data.pressure_raw) / 256;
+       SystemHealth_ReportSensor(SENSOR_BMP280, status);
 
-      sprintf(BMP_data,
-              "\r\nBMP280 Temperature: %ld.%02ld C, Pressure: %lu Pa\r\n"
-              "BMP280_Raw_temp: %lu, BMP280_Raw_Pressure: %lu\r\n",
-              (long)(temp_c / 100),
-              (long)(temp_c % 100),
-              (unsigned long)pressure_pa,
-              (unsigned long)sensor_data.temperature_raw,
-              (unsigned long)sensor_data.pressure_raw);
+       if (status == HAL_OK)
+       {
+           temp_centi_c =
+               BMP280_CompensateTemp(sensor_data.temperature_raw);
 
-      if (HAL_GetTick() - BMP_last_transmit_time >= 1000)
-      {
-          HAL_UART_Transmit(&huart2,
-                            (uint8_t *)BMP_data,
-                            strlen(BMP_data),
-                            HAL_MAX_DELAY);
+           pressure_q24_8 =
+               BMP280_CompensatePressure(sensor_data.pressure_raw);
 
-          BMP_last_transmit_time = HAL_GetTick();
-      }
+           sensor_data.temperature = (float)temp_centi_c / 100.0f;
+           sensor_data.pressure = (float)pressure_q24_8 / 256.0f;
 
-      /* Read MPU9250 */
-      MPU9250_ReadRaw(&sensor_data.accel_raw_x,
-                      &sensor_data.accel_raw_y,
-                      &sensor_data.accel_raw_z,
-                      &sensor_data.gyro_raw_x,
-                      &sensor_data.gyro_raw_y,
-                      &sensor_data.gyro_raw_z,
-                      &sensor_data.temp_raw);
+           now = HAL_GetTick();
+           if ((uint32_t)(now - bmp_last_transmit_time) >= 1000U)
+           {
+               length = snprintf(
+                   bmp_data,
+                   sizeof(bmp_data),
+                   "\r\nBMP280 Temperature: %.2f C, Pressure: %.2f Pa\r\n"
+                   "BMP280 raw temp: %ld, raw pressure: %ld\r\n",
+                   (double)sensor_data.temperature,
+                   (double)sensor_data.pressure,
+                   (long)sensor_data.temperature_raw,
+                   (long)sensor_data.pressure_raw);
 
-      accel_x = sensor_data.accel_raw_x / 16384.0f;
-      accel_y = sensor_data.accel_raw_y / 16384.0f;
-      accel_z = sensor_data.accel_raw_z / 16384.0f;
+               if (length > 0)
+               {
+                   if ((size_t)length >= sizeof(bmp_data))
+                   {
+                       length = (int)sizeof(bmp_data) - 1;
+                   }
 
-      gyro_x = sensor_data.gyro_raw_x / 131.0f;
-      gyro_y = sensor_data.gyro_raw_y / 131.0f;
-      gyro_z = sensor_data.gyro_raw_z / 131.0f;
+                   HAL_UART_Transmit(
+                       &huart2,
+                       (uint8_t *)bmp_data,
+                       (uint16_t)length,
+                       HAL_MAX_DELAY);
+               }
 
-      temp_raw = (sensor_data.temp_raw / 333.87f) + 21.0f;
+               bmp_last_transmit_time = now;
+           }
+       }
 
-      sprintf(mpu_data,
-              "\r\nAccel_raw X: %d, Y: %d, Z: %d\r\n"
-              "Gyro_raw X: %d, Y: %d, Z: %d\r\n"
-              "Temp_raw: %d\r\n"
-              "Accel X: %.2f, Y: %.2f, Z: %.2f\r\n"
-              "Gyro X: %.2f, Y: %.2f, Z: %.2f\r\n"
-              "Temp: %.2f C\r\n",
-              sensor_data.accel_raw_x,
-              sensor_data.accel_raw_y,
-              sensor_data.accel_raw_z,
-              sensor_data.gyro_raw_x,
-              sensor_data.gyro_raw_y,
-              sensor_data.gyro_raw_z,
-              sensor_data.temp_raw,
-              (double)accel_x,
-              (double)accel_y,
-              (double)accel_z,
-              (double)gyro_x,
-              (double)gyro_y,
-              (double)gyro_z,
-              (double)temp_raw);
+       /* MPU9250 */
+       status = MPU9250_ReadRaw(
+           &sensor_data.accel_raw_x,
+           &sensor_data.accel_raw_y,
+           &sensor_data.accel_raw_z,
+           &sensor_data.gyro_raw_x,
+           &sensor_data.gyro_raw_y,
+           &sensor_data.gyro_raw_z,
+           &sensor_data.temp_raw);
 
-      if (HAL_GetTick() - MPU_last_transmit_time >= 1000)
-      {
-          HAL_UART_Transmit(&huart2,
-                            (uint8_t *)mpu_data,
-                            strlen(mpu_data),
-                            HAL_MAX_DELAY);
+       SystemHealth_ReportSensor(SENSOR_MPU9250, status);
 
-          MPU_last_transmit_time = HAL_GetTick();
-      }
+       if (status == HAL_OK)
+       {
+           accel_x = (float)sensor_data.accel_raw_x / 16384.0f;
+           accel_y = (float)sensor_data.accel_raw_y / 16384.0f;
+           accel_z = (float)sensor_data.accel_raw_z / 16384.0f;
 
-      /* Read MLX90393 */
-      MLX90393_StartMeasurement();
+           gyro_x = (float)sensor_data.gyro_raw_x / 131.0f;
+           gyro_y = (float)sensor_data.gyro_raw_y / 131.0f;
+           gyro_z = (float)sensor_data.gyro_raw_z / 131.0f;
 
-      MLX90393_ReadMeasurement(&sensor_data.mag_raw_x,
-                               &sensor_data.mag_raw_y,
-                               &sensor_data.mag_raw_z);
+           mpu_temperature_c =
+               ((float)sensor_data.temp_raw / 333.87f) + 21.0f;
 
-      MLX90393_RawTo_uT(&sensor_data.mag_raw_x,
-                        &sensor_data.mag_raw_y,
-                        &sensor_data.mag_raw_z,
-                        &sensor_data.mag_x_uT,
-                        &sensor_data.mag_y_uT,
-                        &sensor_data.mag_z_uT);
+           now = HAL_GetTick();
+           if ((uint32_t)(now - mpu_last_transmit_time) >= 1000U)
+           {
+               length = snprintf(
+                   mpu_data,
+                   sizeof(mpu_data),
+                   "\r\nMPU raw accel: %d, %d, %d\r\n"
+                   "MPU raw gyro: %d, %d, %d\r\n"
+                   "MPU accel g: %.2f, %.2f, %.2f\r\n"
+                   "MPU gyro dps: %.2f, %.2f, %.2f\r\n"
+                   "MPU temperature: %.2f C\r\n",
+                   sensor_data.accel_raw_x,
+                   sensor_data.accel_raw_y,
+                   sensor_data.accel_raw_z,
+                   sensor_data.gyro_raw_x,
+                   sensor_data.gyro_raw_y,
+                   sensor_data.gyro_raw_z,
+                   (double)accel_x,
+                   (double)accel_y,
+                   (double)accel_z,
+                   (double)gyro_x,
+                   (double)gyro_y,
+                   (double)gyro_z,
+                   (double)mpu_temperature_c);
 
-      sprintf(mlx_data,
-              "\r\nMag_raw X: %d, Y: %d, Z: %d\r\n"
-              "Mag X: %.2f uT, Y: %.2f uT, Z: %.2f uT\r\n",
-              sensor_data.mag_raw_x,
-              sensor_data.mag_raw_y,
-              sensor_data.mag_raw_z,
-              (double)sensor_data.mag_x_uT,
-              (double)sensor_data.mag_y_uT,
-              (double)sensor_data.mag_z_uT);
+               if (length > 0)
+               {
+                   if ((size_t)length >= sizeof(mpu_data))
+                   {
+                       length = (int)sizeof(mpu_data) - 1;
+                   }
 
-      if (HAL_GetTick() - MLX_last_transmit_time >= 1000)
-      {
-          HAL_UART_Transmit(&huart2,
-                            (uint8_t *)mlx_data,
-                            strlen(mlx_data),
-                            HAL_MAX_DELAY);
+                   HAL_UART_Transmit(
+                       &huart2,
+                       (uint8_t *)mpu_data,
+                       (uint16_t)length,
+                       HAL_MAX_DELAY);
+               }
 
-          MLX_last_transmit_time = HAL_GetTick();
-      }
+               mpu_last_transmit_time = now;
+           }
+       }
 
-      osDelay(1);
+       /* MLX90393 */
+       status = MLX90393_StartMeasurement();
+
+       if (status == HAL_OK)
+       {
+           osDelay(20U);
+
+           status = MLX90393_ReadMeasurement(
+               &sensor_data.mag_raw_x,
+               &sensor_data.mag_raw_y,
+               &sensor_data.mag_raw_z);
+       }
+
+       SystemHealth_ReportSensor(SENSOR_MLX90393, status);
+
+       if (status == HAL_OK)
+       {
+           MLX90393_RawTo_uT(
+               &sensor_data.mag_raw_x,
+               &sensor_data.mag_raw_y,
+               &sensor_data.mag_raw_z,
+               &sensor_data.mag_x_uT,
+               &sensor_data.mag_y_uT,
+               &sensor_data.mag_z_uT);
+
+           now = HAL_GetTick();
+           if ((uint32_t)(now - mlx_last_transmit_time) >= 1000U)
+           {
+               length = snprintf(
+                   mlx_data,
+                   sizeof(mlx_data),
+                   "\r\nMLX raw: %d, %d, %d\r\n"
+                   "MLX magnetic field: %.2f, %.2f, %.2f uT\r\n",
+                   sensor_data.mag_raw_x,
+                   sensor_data.mag_raw_y,
+                   sensor_data.mag_raw_z,
+                   (double)sensor_data.mag_x_uT,
+                   (double)sensor_data.mag_y_uT,
+                   (double)sensor_data.mag_z_uT);
+
+               if (length > 0)
+               {
+                   if ((size_t)length >= sizeof(mlx_data))
+                   {
+                       length = (int)sizeof(mlx_data) - 1;
+                   }
+
+                   HAL_UART_Transmit(
+                       &huart2,
+                       (uint8_t *)mlx_data,
+                       (uint16_t)length,
+                       HAL_MAX_DELAY);
+               }
+
+               mlx_last_transmit_time = now;
+           }
+       }
+
+       now = HAL_GetTick();
+       if ((resources_reported == 0U) &&
+           ((uint32_t)(now - resource_report_start) >= 2000U))
+       {
+           length = snprintf(
+               resource_data,
+               sizeof(resource_data),
+               "\r\nRTOS free heap: %lu bytes\r\n"
+               "Stack headroom (words): Sensor=%lu State=%lu GPS=%lu "
+               "Fault=%lu Logger=%lu Default=%lu\r\n",
+               (unsigned long)xPortGetFreeHeapSize(),
+               (unsigned long)uxTaskGetStackHighWaterMark(SensorTaskHandle),
+               (unsigned long)uxTaskGetStackHighWaterMark(StateEstTaskHandle),
+               (unsigned long)uxTaskGetStackHighWaterMark(GPSTaskHandle),
+               (unsigned long)uxTaskGetStackHighWaterMark(FaultManageTaskHandle),
+               (unsigned long)uxTaskGetStackHighWaterMark(LoggerTaskHandle),
+               (unsigned long)uxTaskGetStackHighWaterMark(defaultTaskHandle));
+
+           if (length > 0)
+           {
+               if ((size_t)length >= sizeof(resource_data))
+               {
+                   length = (int)sizeof(resource_data) - 1;
+               }
+
+               HAL_UART_Transmit(
+                   &huart2,
+                   (uint8_t *)resource_data,
+                   (uint16_t)length,
+                   HAL_MAX_DELAY);
+           }
+
+           resources_reported = 1U;
+       }
+
+       osDelay(1U);
   }
   /* USER CODE END StartSensorTask */
 }
@@ -382,10 +519,24 @@ void StartGPSTask(void *argument)
 void StartFaultManageTask(void *argument)
 {
   /* USER CODE BEGIN StartFaultManageTask */
+
+	uint32_t button_events;
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	  button_events = GPIO_Button_TakePendingEvents();
+
+      if (button_events != 0U)
+      {
+          GPIO_Button_ProcessEvents(button_events);
+      }
+
+      SystemHealth_Update();
+      handle_system_health();
+      handle_system_state();
+
+      osDelay(100U);
   }
   /* USER CODE END StartFaultManageTask */
 }

@@ -140,6 +140,8 @@ void SelfTest(void)
 		current_health_state = NORMAL;
 	}
 
+	SystemHealth_CaptureStartupResult();
+
 }
 
 
