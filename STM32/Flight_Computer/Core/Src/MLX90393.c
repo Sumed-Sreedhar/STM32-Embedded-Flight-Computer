@@ -60,18 +60,35 @@ HAL_StatusTypeDef MLX90393_WriteRegister(
     uint16_t value)
 {
     uint8_t tx[4];
+    uint8_t status_byte = 0U;
 
     tx[0] = MLX90393_CMD_WR;
     tx[1] = (uint8_t)(value >> 8);
-    tx[2] = (uint8_t)(value & 0xFF);
+    tx[2] = (uint8_t)(value & 0xFFU);
     tx[3] = (uint8_t)(reg << 2);
 
     if (HAL_I2C_Master_Transmit(
             &hi2c1,
             MLX90393_I2C_ADDR,
             tx,
-            4,
+            sizeof(tx),
             MLX90393_TIMEOUT) != HAL_OK)
+    {
+        return HAL_ERROR;
+    }
+
+    if (HAL_I2C_Master_Receive(
+            &hi2c1,
+            MLX90393_I2C_ADDR,
+            &status_byte,
+            1U,
+            MLX90393_TIMEOUT) != HAL_OK)
+    {
+        return HAL_ERROR;
+    }
+
+    /* MLX90393 status bit 4 is the command error flag. */
+    if ((status_byte & 0x10U) != 0U)
     {
         return HAL_ERROR;
     }
@@ -126,6 +143,16 @@ HAL_StatusTypeDef MLX90393_Configure(void)
     HAL_Delay(2);
 
     if (MLX90393_ReadRegister(MLX90393_REG_CONF2, &conf2_check) != HAL_OK)
+    {
+        return HAL_ERROR;
+    }
+
+    if (conf0_check != MLX90393_CONF0_VALUE)
+    {
+        return HAL_ERROR;
+    }
+
+    if (conf2_check != MLX90393_CONF2_VALUE)
     {
         return HAL_ERROR;
     }

@@ -13,7 +13,7 @@
 
 /* Low-noise magnetometer config values */
 #define MLX90393_CONF0_VALUE   0x007C   /* GAIN_SEL=7 (1x), HALLCONF=0xC */
-#define MLX90393_CONF2_VALUE   0x000A   /* OSR=3, DIG_FILT=3, RES_XYZ=0, OSR2=0 (~16ms conv, low noise) */
+#define MLX90393_CONF2_VALUE   0x000F   /* OSR=3, DIG_FILT=3 */
 
 /* MLX90393 Command Definitions */
 #define MLX90393_CMD_EX    0x80
