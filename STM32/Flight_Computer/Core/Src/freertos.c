@@ -56,7 +56,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-static osMessageQueueId_t sensorFrameQueue;
 
 /* Debugger-visible indicators that StateEstTask is receiving sensor frames. */
 static sensor_frame_t estimator_latest_frame;
@@ -68,7 +67,7 @@ static volatile float estimator_dt_seconds;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for SensorTask */
@@ -105,6 +104,16 @@ const osThreadAttr_t LoggerTask_attributes = {
   .name = "LoggerTask",
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal2,
+};
+/* Definitions for sensorFrameQueue */
+osMessageQueueId_t sensorFrameQueueHandle;
+const osMessageQueueAttr_t sensorFrameQueue_attributes = {
+  .name = "sensorFrameQueue"
+};
+/* Definitions for sensorDebugQueue */
+osMessageQueueId_t sensorDebugQueueHandle;
+const osMessageQueueAttr_t sensorDebugQueue_attributes = {
+  .name = "sensorDebugQueue"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -143,67 +152,42 @@ void MX_FREERTOS_Init(void) {
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of sensorFrameQueue */
+  sensorFrameQueueHandle = osMessageQueueNew (1, sizeof(sensor_frame_t), &sensorFrameQueue_attributes);
+
+  /* creation of sensorDebugQueue */
+  sensorDebugQueueHandle = osMessageQueueNew (1, sizeof(sensor_frame_t), &sensorDebugQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
-  sensorFrameQueue = osMessageQueueNew(1U, sizeof(sensor_frame_t), NULL);
-  if (sensorFrameQueue == NULL)
+
+  if ((sensorFrameQueueHandle == NULL) ||
+      (sensorDebugQueueHandle == NULL))
   {
-    Error_Handler();
+      Error_Handler();
   }
+
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-	defaultTaskHandle = osThreadNew(
-	    StartDefaultTask, NULL, &defaultTask_attributes);
-	if (defaultTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* creation of SensorTask */
-	SensorTaskHandle = osThreadNew(
-	    StartSensorTask, NULL, &SensorTask_attributes);
-	if (SensorTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  SensorTaskHandle = osThreadNew(StartSensorTask, NULL, &SensorTask_attributes);
 
   /* creation of StateEstTask */
-	StateEstTaskHandle = osThreadNew(
-	    StartStateEstTask, NULL, &StateEstTask_attributes);
-	if (StateEstTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  StateEstTaskHandle = osThreadNew(StartStateEstTask, NULL, &StateEstTask_attributes);
 
   /* creation of GPSTask */
-	GPSTaskHandle = osThreadNew(
-	    StartGPSTask, NULL, &GPSTask_attributes);
-	if (GPSTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  GPSTaskHandle = osThreadNew(StartGPSTask, NULL, &GPSTask_attributes);
 
   /* creation of FaultManageTask */
-	FaultManageTaskHandle = osThreadNew(
-	    StartFaultManageTask, NULL, &FaultManageTask_attributes);
-	if (FaultManageTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  FaultManageTaskHandle = osThreadNew(StartFaultManageTask, NULL, &FaultManageTask_attributes);
 
   /* creation of LoggerTask */
-	LoggerTaskHandle = osThreadNew(
-	    StartLoggerTask, NULL, &LoggerTask_attributes);
-	if (LoggerTaskHandle == NULL)
-	{
-	    Error_Handler();
-	}
+  LoggerTaskHandle = osThreadNew(StartLoggerTask, NULL, &LoggerTask_attributes);
 
-	if (xPortGetFreeHeapSize() < 256U)
-	{
-	    Error_Handler();
-	}
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -224,11 +208,69 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+	sensor_frame_t frame;
+	char line[256];
+	int length;
+	uint8_t got_frame;
 
+	(void)argument;
   /* Infinite loop */
   for(;;)
   {
-	  osDelay(1000);
+      osDelay(1000U);
+      got_frame = 0U;
+
+      /* Keep the newest available diagnostic frame. */
+      while (osMessageQueueGet(
+                 sensorDebugQueueHandle,
+                 &frame,
+                 NULL,
+                 0U) == osOK)
+      {
+          got_frame = 1U;
+      }
+
+      if (got_frame != 0U)
+      {
+          length = snprintf(
+              line,
+              sizeof(line),
+			  "\nRAW A:%d,%d,%d G:%d,%d,%d M:%d,%d,%d "
+			  "BMP:%ld,%ld | "
+			  "UNIT A:%ld,%ld,%ld mg G:%ld,%ld,%ld cdeg/s "
+			  "M:%ld,%ld,%ld c-uT T:%ld cC P:%ld Pa\r\n",
+			  (int)frame.accel_raw[0],
+			  (int)frame.accel_raw[1],
+			  (int)frame.accel_raw[2],
+			  (int)frame.gyro_raw[0],
+			  (int)frame.gyro_raw[1],
+			  (int)frame.gyro_raw[2],
+			  (int)frame.mag_raw[0],
+			  (int)frame.mag_raw[1],
+			  (int)frame.mag_raw[2],
+			  (long)frame.baro_temp_raw,
+			  (long)frame.baro_pressure_raw,
+			  (long)(frame.accel_g[0] * 1000.0f),
+			  (long)(frame.accel_g[1] * 1000.0f),
+			  (long)(frame.accel_g[2] * 1000.0f),
+			  (long)(frame.gyro_dps[0] * 100.0f),
+			  (long)(frame.gyro_dps[1] * 100.0f),
+			  (long)(frame.gyro_dps[2] * 100.0f),
+			  (long)(frame.mag_uT[0] * 100.0f),
+			  (long)(frame.mag_uT[1] * 100.0f),
+			  (long)(frame.mag_uT[2] * 100.0f),
+			  (long)(frame.temperature_c * 100.0f),
+			  (long)frame.pressure_pa);
+
+          if ((length > 0) && ((size_t)length < sizeof(line)))
+          {
+              (void)HAL_UART_Transmit(
+                  &huart2,
+                  (uint8_t *)line,
+                  (uint16_t)length,
+                  100U);
+          }
+      }
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -245,6 +287,7 @@ void StartSensorTask(void *argument)
   /* USER CODE BEGIN StartSensorTask */
     sensor_frame_t frame = {0};
     sensor_frame_t discarded_frame;
+    sensor_frame_t discarded_debug_frame;
     TickType_t last_wake = xTaskGetTickCount();
 
     uint32_t now;
@@ -272,6 +315,15 @@ void StartSensorTask(void *argument)
 
         if (status == HAL_OK)
         {
+        	frame.accel_raw[0] = sensor_data.accel_raw_x;
+        	frame.accel_raw[1] = sensor_data.accel_raw_y;
+        	frame.accel_raw[2] = sensor_data.accel_raw_z;
+
+        	frame.gyro_raw[0] = sensor_data.gyro_raw_x;
+        	frame.gyro_raw[1] = sensor_data.gyro_raw_y;
+        	frame.gyro_raw[2] = sensor_data.gyro_raw_z;
+        	frame.imu_temp_raw = sensor_data.temp_raw;
+
             frame.accel_g[0] = (float)sensor_data.accel_raw_x / 16384.0f;
             frame.accel_g[1] = (float)sensor_data.accel_raw_y / 16384.0f;
             frame.accel_g[2] = (float)sensor_data.accel_raw_z / 16384.0f;
@@ -305,6 +357,9 @@ void StartSensorTask(void *argument)
                 pressure_q24_8 =
                     BMP280_CompensatePressure(sensor_data.pressure_raw);
 
+                frame.baro_temp_raw = sensor_data.temperature_raw;
+                frame.baro_pressure_raw = sensor_data.pressure_raw;
+
                 frame.temperature_c = (float)temperature_centi_c / 100.0f;
                 frame.pressure_pa = (float)pressure_q24_8 / 256.0f;
                 sensor_data.temperature = frame.temperature_c;
@@ -337,6 +392,10 @@ void StartSensorTask(void *argument)
                     &sensor_data.mag_y_uT,
                     &sensor_data.mag_z_uT);
 
+                frame.mag_raw[0] = sensor_data.mag_raw_x;
+                frame.mag_raw[1] = sensor_data.mag_raw_y;
+                frame.mag_raw[2] = sensor_data.mag_raw_z;
+
                 frame.mag_uT[0] = sensor_data.mag_x_uT;
                 frame.mag_uT[1] = sensor_data.mag_y_uT;
                 frame.mag_uT[2] = sensor_data.mag_z_uT;
@@ -366,11 +425,24 @@ void StartSensorTask(void *argument)
         }
 
         /* Keep only the newest frame if StateEstTask falls behind. */
-        if (osMessageQueuePut(sensorFrameQueue, &frame, 0U, 0U) != osOK)
+        if (osMessageQueuePut(sensorFrameQueueHandle, &frame, 0U, 0U) != osOK)
         {
             (void)osMessageQueueGet(
-                sensorFrameQueue, &discarded_frame, NULL, 0U);
-            (void)osMessageQueuePut(sensorFrameQueue, &frame, 0U, 0U);
+                sensorFrameQueueHandle, &discarded_frame, NULL, 0U);
+            (void)osMessageQueuePut(sensorFrameQueueHandle, &frame, 0U, 0U);
+        }
+
+        if (osMessageQueuePut(
+                sensorDebugQueueHandle, &frame, 0U, 0U) != osOK)
+        {
+            (void)osMessageQueueGet(
+                sensorDebugQueueHandle,
+                &discarded_debug_frame,
+                NULL,
+                0U);
+
+            (void)osMessageQueuePut(
+                sensorDebugQueueHandle, &frame, 0U, 0U);
         }
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10U));
@@ -396,7 +468,7 @@ void StartStateEstTask(void *argument)
     for (;;)
     {
         if (osMessageQueueGet(
-                sensorFrameQueue,
+                sensorFrameQueueHandle,
                 &frame,
                 NULL,
                 osWaitForever) == osOK)

@@ -56,6 +56,14 @@ typedef struct
 	float mag_uT[3];
 	float temperature_c;
 	float pressure_pa;
+
+	int16_t accel_raw[3];
+	int16_t gyro_raw[3];
+	int16_t imu_temp_raw;
+	int16_t mag_raw[3];
+	int32_t baro_temp_raw;
+	int32_t baro_pressure_raw;
+
 } sensor_frame_t;
 
 extern sensor_data_t sensor_data;
