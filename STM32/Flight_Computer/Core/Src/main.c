@@ -105,6 +105,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   MX_SPI2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   char msg[] = "MAIN STARTED\r\n";
   HAL_UART_Transmit(&huart2,
@@ -131,7 +132,7 @@ int main(void)
           "MPU9250 : %s\r\n"
           "MLX90393: %s\r\n"
           "\r\n"
-          "SYSTEM HEALTH: %s\r\n"
+          "STARTUP SENSOR CHECK: %s\r\n"
           "===============================\r\n",
 
           (bmp_test_result == BMP_OK) ? "PASS" :
@@ -154,10 +155,9 @@ int main(void)
           (mlx_test_result == MLX_CONFIG_FAIL) ? "CONFIG FAIL" :
                                                  "UNKNOWN",
 
-          (current_health_state == NORMAL) ? "NORMAL" :
+          (current_health_state == NORMAL) ? "PASS" :
           (current_health_state == FAULT) ? "FAULT" :
-          (current_health_state == CRITICAL_FAULT) ? "CRITICAL FAULT" :
-                                                     "UNKNOWN"
+          (current_health_state == CRITICAL_FAULT) ? "CRITICAL FAULT" : "UNKNOWN"
   );
 
   HAL_UART_Transmit(&huart2,

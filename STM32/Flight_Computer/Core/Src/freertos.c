@@ -34,9 +34,12 @@
 #include "sensor_data.h"
 #include "usart.h"
 #include "button.h"
+#include "gps.h"
+#include "mahony.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -67,7 +70,7 @@ static volatile float estimator_dt_seconds;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 512 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for SensorTask */
@@ -88,14 +91,14 @@ const osThreadAttr_t StateEstTask_attributes = {
 osThreadId_t GPSTaskHandle;
 const osThreadAttr_t GPSTask_attributes = {
   .name = "GPSTask",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* Definitions for FaultManageTask */
 osThreadId_t FaultManageTaskHandle;
 const osThreadAttr_t FaultManageTask_attributes = {
   .name = "FaultManageTask",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal4,
 };
 /* Definitions for LoggerTask */
@@ -164,6 +167,8 @@ void MX_FREERTOS_Init(void) {
   if ((sensorFrameQueueHandle == NULL) ||
       (sensorDebugQueueHandle == NULL))
   {
+      static const char error[] = "RTOS ERROR: queue creation failed\r\n";
+      (void)HAL_UART_Transmit(&huart2, (uint8_t *)error, sizeof(error) - 1U, 100U);
       Error_Handler();
   }
 
@@ -188,6 +193,13 @@ void MX_FREERTOS_Init(void) {
   /* creation of LoggerTask */
   LoggerTaskHandle = osThreadNew(StartLoggerTask, NULL, &LoggerTask_attributes);
 
+  if (!defaultTaskHandle || !SensorTaskHandle || !StateEstTaskHandle ||
+      !GPSTaskHandle || !FaultManageTaskHandle || !LoggerTaskHandle) {
+      static const char error[] = "RTOS ERROR: task creation failed\r\n";
+      (void)HAL_UART_Transmit(&huart2, (uint8_t *)error, sizeof(error) - 1U, 100U);
+      Error_Handler();
+  }
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -207,72 +219,88 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
-	sensor_frame_t frame;
-	char line[256];
-	int length;
-	uint8_t got_frame;
+    sensor_frame_t frame;
+    gps_data_t gps;
+    char output[600];
+    int length;
+    uint8_t got_frame;
+    uint32_t last_queue_warning = 0U;
 
-	(void)argument;
-  /* Infinite loop */
-  for(;;)
-  {
-      osDelay(1000U);
-      got_frame = 0U;
+    (void)argument;
+    for (;;) {
+        osDelay(1000U);
+        got_frame = 0U;
+        while (osMessageQueueGet(sensorDebugQueueHandle, &frame, NULL, 0U) == osOK) got_frame = 1U;
+        if (!got_frame) {
+            if ((uint32_t)(HAL_GetTick() - last_queue_warning) >= 5000U) {
+                static const char warning[] = "DEBUG: no sensor frame received\r\n";
+                (void)HAL_UART_Transmit(&huart2, (uint8_t *)warning, sizeof(warning) - 1U, 100U);
+                last_queue_warning = HAL_GetTick();
+            }
+            continue;
+        }
 
-      /* Keep the newest available diagnostic frame. */
-      while (osMessageQueueGet(
-                 sensorDebugQueueHandle,
-                 &frame,
-                 NULL,
-                 0U) == osOK)
-      {
-          got_frame = 1U;
-      }
+        taskENTER_CRITICAL();
+        gps.latitude_deg = gps_data.latitude_deg;
+        gps.longitude_deg = gps_data.longitude_deg;
+        gps.altitude_m = gps_data.altitude_m;
+        gps.tick_ms = gps_data.tick_ms;
+        gps.fix = gps_data.fix;
+        gps.satellites = gps_data.satellites;
+        taskEXIT_CRITICAL();
 
-      if (got_frame != 0U)
-      {
-          length = snprintf(
-              line,
-              sizeof(line),
-			  "\nRAW A:%d,%d,%d G:%d,%d,%d M:%d,%d,%d "
-			  "BMP:%ld,%ld | "
-			  "UNIT A:%ld,%ld,%ld mg G:%ld,%ld,%ld cdeg/s "
-			  "M:%ld,%ld,%ld c-uT T:%ld cC P:%ld Pa\r\n",
-			  (int)frame.accel_raw[0],
-			  (int)frame.accel_raw[1],
-			  (int)frame.accel_raw[2],
-			  (int)frame.gyro_raw[0],
-			  (int)frame.gyro_raw[1],
-			  (int)frame.gyro_raw[2],
-			  (int)frame.mag_raw[0],
-			  (int)frame.mag_raw[1],
-			  (int)frame.mag_raw[2],
-			  (long)frame.baro_temp_raw,
-			  (long)frame.baro_pressure_raw,
-			  (long)(frame.accel_g[0] * 1000.0f),
-			  (long)(frame.accel_g[1] * 1000.0f),
-			  (long)(frame.accel_g[2] * 1000.0f),
-			  (long)(frame.gyro_dps[0] * 100.0f),
-			  (long)(frame.gyro_dps[1] * 100.0f),
-			  (long)(frame.gyro_dps[2] * 100.0f),
-			  (long)(frame.mag_uT[0] * 100.0f),
-			  (long)(frame.mag_uT[1] * 100.0f),
-			  (long)(frame.mag_uT[2] * 100.0f),
-			  (long)(frame.temperature_c * 100.0f),
-			  (long)frame.pressure_pa);
+        float roll, pitch, yaw;
+        taskENTER_CRITICAL();
+        roll = estimator_latest_frame.roll_deg;
+        pitch = estimator_latest_frame.pitch_deg;
+        yaw = estimator_latest_frame.yaw_deg;
+        taskEXIT_CRITICAL();
 
-          if ((length > 0) && ((size_t)length < sizeof(line)))
-          {
-              (void)HAL_UART_Transmit(
-                  &huart2,
-                  (uint8_t *)line,
-                  (uint16_t)length,
-                  100U);
-          }
-      }
-  }
-  /* USER CODE END StartDefaultTask */
+        length = snprintf(output, sizeof(output),
+            "\r\n--- Sensor snapshot ---\r\n"
+            "Accel raw [counts]:       %d, %d, %d\r\n"
+            "Accel converted [g]:      %ld.%03ld, %ld.%03ld, %ld.%03ld\r\n"
+            "Gyro raw [counts]:        %d, %d, %d\r\n"
+            "Gyro converted [deg/s]:  %ld.%02ld, %ld.%02ld, %ld.%02ld\r\n"
+            "Mag raw [counts]:         %d, %d, %d\r\n"
+            "Mag converted [uT]:      %ld.%02ld, %ld.%02ld, %ld.%02ld\r\n"
+            "Barometer raw T/P:        %ld, %ld\r\n"
+            "Barometer converted:      %ld.%02ld C, %ld Pa\r\n"
+            "Attitude [deg] R/P/Y:     %ld.%02ld, %ld.%02ld, %ld.%02ld\r\n"
+            "GPS: %s, satellites %u\r\n"
+            "GPS position:             %ld.%06ld, %ld.%06ld deg\r\n"
+            "GPS altitude:             %ld.%02ld m\r\n",
+            (int)frame.accel_raw[0], (int)frame.accel_raw[1], (int)frame.accel_raw[2],
+            (long)(frame.accel_g[0] * 1000) / 1000, labs((long)(frame.accel_g[0] * 1000) % 1000),
+            (long)(frame.accel_g[1] * 1000) / 1000, labs((long)(frame.accel_g[1] * 1000) % 1000),
+            (long)(frame.accel_g[2] * 1000) / 1000, labs((long)(frame.accel_g[2] * 1000) % 1000),
+            (int)frame.gyro_raw[0], (int)frame.gyro_raw[1], (int)frame.gyro_raw[2],
+            (long)(frame.gyro_dps[0] * 100), labs((long)(frame.gyro_dps[0] * 100) % 100),
+            (long)(frame.gyro_dps[1] * 100), labs((long)(frame.gyro_dps[1] * 100) % 100),
+            (long)(frame.gyro_dps[2] * 100), labs((long)(frame.gyro_dps[2] * 100) % 100),
+            (int)frame.mag_raw[0], (int)frame.mag_raw[1], (int)frame.mag_raw[2],
+            (long)(frame.mag_uT[0] * 100), labs((long)(frame.mag_uT[0] * 100) % 100),
+            (long)(frame.mag_uT[1] * 100), labs((long)(frame.mag_uT[1] * 100) % 100),
+            (long)(frame.mag_uT[2] * 100), labs((long)(frame.mag_uT[2] * 100) % 100),
+            (long)frame.baro_temp_raw, (long)frame.baro_pressure_raw,
+            (long)(frame.temperature_c * 100) / 100, labs((long)(frame.temperature_c * 100) % 100),
+            (long)frame.pressure_pa,
+            (long)(roll * 100) / 100, labs((long)(roll * 100) % 100),
+            (long)(pitch * 100) / 100, labs((long)(pitch * 100) % 100),
+            (long)(yaw * 100) / 100, labs((long)(yaw * 100) % 100),
+            (gps.fix && (HAL_GetTick() - gps.tick_ms < 3000U)) ? "FIX" : "NO FIX/STALE", gps.satellites,
+            (long)gps.latitude_deg, labs((long)(gps.latitude_deg * 1000000) % 1000000),
+            (long)gps.longitude_deg, labs((long)(gps.longitude_deg * 1000000) % 1000000),
+            (long)(gps.altitude_m * 100) / 100, labs((long)(gps.altitude_m * 100) % 100));
+
+        if (length < 0 || (size_t)length >= sizeof(output)) {
+            static const char warning[] = "DEBUG: sensor report formatting failed or was truncated\r\n";
+            (void)HAL_UART_Transmit(&huart2, (uint8_t *)warning, sizeof(warning) - 1U, 100U);
+        } else if (HAL_UART_Transmit(&huart2, (uint8_t *)output, (uint16_t)length, 500U) != HAL_OK) {
+            static const char warning[] = "DEBUG: USART2 transmit failed\r\n";
+            (void)HAL_UART_Transmit(&huart2, (uint8_t *)warning, sizeof(warning) - 1U, 100U);
+        }
+    }
 }
 
 /* USER CODE BEGIN Header_StartSensorTask */
@@ -301,6 +329,7 @@ void StartSensorTask(void *argument)
 
     for (;;)
     {
+        frame.valid_mask = 0U;
         /* IMU: sample once per 10 ms cycle. */
         status = MPU9250_ReadRaw(
             &sensor_data.accel_raw_x,
@@ -462,6 +491,9 @@ void StartStateEstTask(void *argument)
   /* USER CODE BEGIN StartStateEstTask */
     sensor_frame_t frame;
     uint32_t previous_imu_tick_ms = 0U;
+    uint32_t elapsed_ms;
+    mahony_t filter;
+    Mahony_Init(&filter);
 
     (void)argument;
 
@@ -480,14 +512,18 @@ void StartStateEstTask(void *argument)
             {
                 if (previous_imu_tick_ms != 0U)
                 {
-                    uint32_t elapsed_ms =
-                        frame.imu_tick_ms - previous_imu_tick_ms;
+                    elapsed_ms = frame.imu_tick_ms - previous_imu_tick_ms;
                     estimator_dt_seconds = (float)elapsed_ms / 1000.0f;
+                    Mahony_Update(&filter, frame.gyro_dps[0], frame.gyro_dps[1], frame.gyro_dps[2], frame.accel_g[0], frame.accel_g[1], frame.accel_g[2], frame.mag_uT[0], frame.mag_uT[1], frame.mag_uT[2], (float)elapsed_ms / 1000.0f);
+                    taskENTER_CRITICAL();
+                    estimator_latest_frame = frame;
+                    estimator_latest_frame.roll_deg = filter.roll_deg;
+                    estimator_latest_frame.pitch_deg = filter.pitch_deg;
+                    estimator_latest_frame.yaw_deg = filter.yaw_deg;
+                    taskEXIT_CRITICAL();
+                    estimator_frame_count++;
                 }
-
                 previous_imu_tick_ms = frame.imu_tick_ms;
-                estimator_latest_frame = frame;
-                estimator_frame_count++;
             }
         }
     }
@@ -503,13 +539,8 @@ void StartStateEstTask(void *argument)
 /* USER CODE END Header_StartGPSTask */
 void StartGPSTask(void *argument)
 {
-  /* USER CODE BEGIN StartGPSTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartGPSTask */
+  (void)GPS_Init();
+  GPS_Task(argument);
 }
 
 /* USER CODE BEGIN Header_StartFaultManageTask */
@@ -536,6 +567,7 @@ void StartFaultManageTask(void *argument)
       }
 
       SystemHealth_Update();
+      SystemState_Update();
       handle_system_health();
       handle_system_state();
 

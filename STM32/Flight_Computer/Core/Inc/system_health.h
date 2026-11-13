@@ -21,6 +21,7 @@ typedef enum
 	SENSOR_BMP280 = 0,
     SENSOR_MPU9250,
     SENSOR_MLX90393,
+	SENSOR_GPS,
 	SENSOR_COUNT
 } sensor_id_t;
 

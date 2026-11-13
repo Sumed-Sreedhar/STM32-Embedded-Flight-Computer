@@ -89,7 +89,9 @@ void SystemHealth_ReportSensor(sensor_id_t sensor, HAL_StatusTypeDef result)
 
 static uint8_t SensorIsFaulted(
     const sensor_health_record_t *record,
-    uint32_t now)
+    uint32_t now,
+    uint32_t startup_grace_ms,
+    uint32_t stale_timeout_ms)
 {
     if (record->fault_latched != 0U)
     {
@@ -98,11 +100,11 @@ static uint8_t SensorIsFaulted(
 
     if (record->has_success == 0U)
     {
-        return (now >= SENSOR_STARTUP_GRACE_MS) ? 1U : 0U;
+        return (now >= startup_grace_ms) ? 1U : 0U;
     }
 
     if ((uint32_t)(now - record->last_success_tick) >
-        SENSOR_STALE_TIMEOUT_MS)
+        stale_timeout_ms)
     {
         return 1U;
     }
@@ -134,9 +136,9 @@ void SystemHealth_Update(void)
         next_health = test_health_state;
     }
 
-    bmp_fault = SensorIsFaulted(&snapshot[SENSOR_BMP280], now);
-    mpu_fault = SensorIsFaulted(&snapshot[SENSOR_MPU9250], now);
-    mlx_fault = SensorIsFaulted(&snapshot[SENSOR_MLX90393], now);
+    bmp_fault = SensorIsFaulted(&snapshot[SENSOR_BMP280], now, SENSOR_STARTUP_GRACE_MS, SENSOR_STALE_TIMEOUT_MS);
+    mpu_fault = SensorIsFaulted(&snapshot[SENSOR_MPU9250], now, SENSOR_STARTUP_GRACE_MS, SENSOR_STALE_TIMEOUT_MS);
+    mlx_fault = SensorIsFaulted(&snapshot[SENSOR_MLX90393], now, SENSOR_STARTUP_GRACE_MS, SENSOR_STALE_TIMEOUT_MS);
 
     if (mpu_fault != 0U)
     {
@@ -178,7 +180,7 @@ void handle_system_health(void)
 
     case FAULT:
         led_normal_off();
-        led_fault_on();
+        led_fault_blink();
         break;
 
     case CRITICAL_FAULT:

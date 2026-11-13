@@ -59,6 +59,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern UART_HandleTypeDef huart2;
+extern UART_HandleTypeDef huart1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -215,6 +216,11 @@ void EXTI9_5_IRQHandler(void)
   /* USER CODE END EXTI9_5_IRQn 1 */
 }
 
+void EXTI15_10_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(B1_Pin);
+}
+
 /**
   * @brief This function handles USART2 global interrupt.
   */
@@ -229,6 +235,11 @@ void USART2_IRQHandler(void)
   /* USER CODE END USART2_IRQn 1 */
 }
 
+void USART1_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart1);
+}
+
 /* USER CODE BEGIN 1 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -237,6 +248,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		GPIO_Fault_Button_Callback();
 	}
 	else if (GPIO_Pin == STATE_BT_Pin)
+	{
+		GPIO_State_Button_Callback();
+	}
+	else if (GPIO_Pin == B1_Pin)
 	{
 		GPIO_State_Button_Callback();
 	}
